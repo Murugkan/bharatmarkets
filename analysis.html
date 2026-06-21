@@ -179,6 +179,7 @@ let currentTab = "overview";
 const S = {
   chartRange: 'MAX',  // period dropdown removed — always show full available history
   chartInterval: 'M',  // only ohlcv_monthly exists now (daily/weekly removed from pipeline)
+  navInterval: 'W',    // mutual fund NAV chart's own D/W/M toggle (separate from chartInterval) — defaults to weekly so years of daily NAV history don't require excessive panning
   maVis: { vol: true },
   kpiVis: { pe: false, rev: false, net: false, cfo: false, ncf: false, opm: false, op: false, pbt: false, eps: false, fcf: false, assets: false, borrowings: false, interest: false, ccr: false, promoter: false, roce: false, divpayout: false },
   chartPan: 0,
@@ -974,12 +975,16 @@ function renderTab(tab) {
             <span style="font-size:11px;font-weight:800;color:var(--tx1)">₹${fmt(navVal, 3)}</span>
             <span style="font-size:10px;font-weight:700;color:${retColor(navChgPct)}">${fmtRet(navChgPct)}</span>
           </div>
-          <div style="display:flex;flex-wrap:wrap;gap:0;padding:6px 10px;background:var(--card);border-bottom:1px solid var(--b1)">
+          <div style="display:flex;flex-wrap:wrap;gap:0;padding:6px 10px;background:var(--card);border-bottom:1px solid var(--b1);align-items:center">
             ${[['1m',ret['1m']],['3m',ret['3m']],['6m',ret['6m']],['1y',ret['1y']],['3y',ret['3y']]].map(([lbl,v])=>`
               <div style="flex:1;min-width:56px;text-align:center;padding:4px 2px">
                 <div style="font-size:8px;color:var(--tx3);font-weight:700;text-transform:uppercase">${lbl}</div>
                 <div style="font-size:11px;font-weight:800;color:${retColor(v)}">${fmtRet(v)}</div>
               </div>`).join('')}
+            <span style="width:1px;height:18px;background:rgba(255,255,255,.15);margin:0 4px"></span>
+            <div style="display:flex;gap:2px">
+              ${['D','W','M'].map(iv => `<button onclick="setNavInterval('${iv}')" style="padding:3px 9px;font-size:9px;font-weight:800;font-family:var(--mono);border-radius:5px;border:1px solid ${S.navInterval===iv?'var(--ac)':'var(--b1)'};background:${S.navInterval===iv?'rgba(0,242,255,.12)':'var(--s1)'};color:${S.navInterval===iv?'var(--ac)':'var(--tx3)'};cursor:pointer">${iv}</button>`).join('')}
+            </div>
           </div>
           <div style="position:relative;background:var(--s1);border-bottom:1px solid var(--b1)">
             <div id="chart-wrap" style="position:relative;width:100%;height:312px;touch-action:manipulation"><canvas id="cv-candle" style="display:block;width:100%;height:100%;touch-action:manipulation"></canvas></div>
@@ -1529,6 +1534,28 @@ function getSlicedCandles(s, canvasWidth){
 // is a flat {date: navValue} map (no open/high/low/volume), so this produces
 // a sorted array of {d, v} points instead of OHLCV bars. Same pan/zoom math
 // as getSlicedCandles so the existing gesture handlers work unchanged.
+// Daily NAV history can run into thousands of points (10+ years), which makes
+// panning tedious — so this aggregates to weekly/monthly (last value of the
+// period, i.e. standard "period-end NAV") based on S.navInterval.
+function aggregateNavPoints(daily, interval){
+  if(interval === 'D' || !daily.length) return daily;
+  const buckets = new Map(); // key -> last point seen for that key (input is date-sorted, so last write wins)
+  daily.forEach(p => {
+    const dt = new Date(p._t);
+    let key;
+    if(interval === 'W'){
+      // ISO week key: Monday of that week, as YYYY-MM-DD
+      const day = (dt.getUTCDay() + 6) % 7; // 0=Mon..6=Sun
+      const monday = new Date(dt); monday.setUTCDate(dt.getUTCDate() - day);
+      key = monday.toISOString().slice(0,10);
+    } else { // 'M'
+      key = dt.getUTCFullYear() + '-' + String(dt.getUTCMonth()+1).padStart(2,'0');
+    }
+    buckets.set(key, p); // last (most recent) point in the bucket wins — period-end NAV
+  });
+  return Array.from(buckets.values()).sort((a,b) => a.d.localeCompare(b.d));
+}
+
 function getSlicedNavPoints(s, canvasWidth){
   if(!s._navCache) {
     const periods = (s.nav_history && s.nav_history.periods) || {};
@@ -1538,7 +1565,13 @@ function getSlicedNavPoints(s, canvasWidth){
       .sort((a, b) => a.d.localeCompare(b.d));
     s._navCache.forEach(p => { if(!p._t) p._t = new Date(p.d).getTime(); });
   }
-  const all = s._navCache;
+  const daily = s._navCache;
+  if (!daily.length) return [];
+
+  const interval = S.navInterval || 'D';
+  if(!s._navAggCache) s._navAggCache = {};
+  if(!s._navAggCache[interval]) s._navAggCache[interval] = aggregateNavPoints(daily, interval);
+  const all = s._navAggCache[interval];
   if (!all.length) return [];
 
   const w = Math.max(100, canvasWidth || 320);
@@ -2424,6 +2457,12 @@ function updateChartStats(s){
 }
 
 // Chart control functions
+function setNavInterval(iv){
+  if(S.navInterval === iv) return;
+  S.navInterval = iv;
+  S.panOffset = 0; // reset pan — point count changes with interval, old offset is meaningless
+  renderTab('canvas'); // re-render so the D/W/M button highlight updates too
+}
 function canvasToggleMA(key){
   S.maVis[key]=!S.maVis[key];
   if(key==='vol'){renderTab('canvas');}
