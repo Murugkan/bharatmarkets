@@ -447,7 +447,7 @@ def parse_nav_table(html, base_url=QSIF_NAV_URL):
             qsif_logger.warning(f"  ⚠ Could not identify columns from headers: {headers}")
             continue
 
-        qsif_logger.info(
+        qsif_logger.debug(
             f"  Table structure: headers={headers} | "
             f"date_idx={date_idx} name_idx={name_idx} nav_idx={nav_idx}"
         )
@@ -468,9 +468,7 @@ def parse_nav_table(html, base_url=QSIF_NAV_URL):
             rows.append({'date_str': date_str, 'scheme_name': scheme_name, 'nav': nav})
 
     if rows:
-        sample = rows[:5]
-        qsif_logger.info(f"  Sample parsed rows ({len(rows)} total): " +
-                          " | ".join(f"[{r['date_str']} / '{r['scheme_name']}' / {r['nav']}]" for r in sample))
+        qsif_logger.debug(f"  Parsed {len(rows)} rows from this page")
     else:
         qsif_logger.warning("  ⚠ Zero rows parsed from any table on this page")
 
@@ -499,18 +497,19 @@ def parse_nav_table(html, base_url=QSIF_NAV_URL):
                 m = re.search(r"__doPostBack\('([^']+)'\s*,\s*'([^']*)'\)", href)
                 if m:
                     next_event_target = m.group(1)
-                    qsif_logger.info(f"  'Next' pagination is __doPostBack with eventTarget='{next_event_target}'")
+                    qsif_logger.debug(f"  'Next' pagination is __doPostBack with eventTarget='{next_event_target}'")
                 else:
-                    qsif_logger.info(f"  'Next' link found but is JS-only postback (could not parse eventTarget): {href[:120]}")
+                    qsif_logger.warning(f"  'Next' link found but is JS-only postback (could not parse eventTarget): {href[:120]}")
             else:
                 from urllib.parse import urljoin
                 next_url = urljoin(base_url, href)
-                qsif_logger.info(f"  Real 'Next' href found: {next_url}")
+                qsif_logger.debug(f"  Real 'Next' href found: {next_url}")
             break
 
     if next_url is None and next_event_target is None:
-        qsif_logger.info("  No 'Next' pagination link (real or postback) found on this page — "
-                          "may be on the last page, or site uses a different 'Next' label/symbol")
+        qsif_logger.debug("  No 'Next' pagination link (real or postback) found on this page — "
+                           "may be on the last page, or site uses a different 'Next' label/symbol")
+
 
 
     # Hidden ASP.NET form fields needed to replicate a postback via POST
@@ -577,7 +576,7 @@ def search_qsif_scheme(session, scheme_name_query, from_date=None, to_date=None)
         return [], None, None, {}
 
     date_range_str = f" [{from_date} to {to_date}]" if (from_date or to_date) else ""
-    qsif_logger.info(f"  Searched for scheme name: '{scheme_name_query}'{date_range_str}")
+    qsif_logger.debug(f"  Searched for scheme name: '{scheme_name_query}'{date_range_str}")
     return parse_nav_table(resp.text, base_url=QSIF_NAV_URL)
 
 
@@ -598,6 +597,7 @@ def fetch_qsif_scheme_history(session, scheme_name_query, from_date=None, to_dat
     ends.
     """
     all_rows = []
+    pages_fetched = 0
 
     page_rows, next_url, event_target, hidden_fields = search_qsif_scheme(
         session, scheme_name_query, from_date=from_date, to_date=to_date
@@ -606,7 +606,8 @@ def fetch_qsif_scheme_history(session, scheme_name_query, from_date=None, to_dat
         qsif_logger.warning(f"  ⚠ Search for '{scheme_name_query}' returned zero rows")
         return all_rows
     all_rows.extend(page_rows)
-    qsif_logger.info(f"  Search page 1: {len(page_rows)} rows")
+    pages_fetched = 1
+    qsif_logger.debug(f"  Search page 1: {len(page_rows)} rows")
 
     url = QSIF_NAV_URL
     for page_num in range(2, max_pages + 1):
@@ -641,13 +642,13 @@ def fetch_qsif_scheme_history(session, scheme_name_query, from_date=None, to_dat
                 break
             request_url = url
         else:
-            qsif_logger.info(f"  Search pagination ended after page {page_num - 1} "
-                              f"(no further 'Next' link)")
+            qsif_logger.debug(f"  Search pagination ended after page {page_num - 1} "
+                               f"(no further 'Next' link)")
             break
 
         page_rows, next_url, event_target, hidden_fields = parse_nav_table(resp.text, base_url=request_url)
         if not page_rows:
-            qsif_logger.info(f"  Search page {page_num}: no rows parsed, stopping")
+            qsif_logger.debug(f"  Search page {page_num}: no rows parsed, stopping")
             break
 
         # Defensive check: if the filter was somehow lost again (e.g. site
@@ -663,10 +664,11 @@ def fetch_qsif_scheme_history(session, scheme_name_query, from_date=None, to_dat
             break
 
         all_rows.extend(page_rows)
-        qsif_logger.info(f"  Search page {page_num}: {len(page_rows)} rows")
+        pages_fetched += 1
+        qsif_logger.debug(f"  Search page {page_num}: {len(page_rows)} rows")
         time.sleep(1)
 
-    qsif_logger.info(f"  ✓ Total rows for '{scheme_name_query}': {len(all_rows)}")
+    qsif_logger.info(f"  ✓ Total rows for '{scheme_name_query}': {len(all_rows)} (across {pages_fetched} page(s))")
     return all_rows
 
 

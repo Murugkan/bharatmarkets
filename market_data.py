@@ -587,6 +587,12 @@ FIELD_MAP = {
     # Data is re-injected directly from nav_ltp.json in main() — skip here
     # to avoid double-processing. Marking __skip__ prevents _unmapped noise.
     "nav_ltp:latest_price": "__skip__",
+
+    # ── qsif_history:latest_price / qsif_history:history (from qsif_history.json) ──
+    # Same pattern as nav_ltp above: re-injected directly from
+    # qsif_history.json in main() — skip here to avoid double-processing.
+    "qsif_history:latest_price": "__skip__",
+    "qsif_history:history": "__skip__",
 }
 
 
@@ -3267,6 +3273,22 @@ def main():
                 nav_ltp_by_ticker[ticker] = entry
         logger.info(f"  ✓ Loaded nav_ltp.json ({len(nav_ltp_by_ticker)} tickers matched)")
 
+    # Load qsif_history.json (QSIF full NAV history, accumulated via
+    # seed+delta jobs), matched to tickers via ISIN or symbol — same
+    # matching pattern as nav_ltp.json above.
+    qsif_history_file = DATA_DIR / 'qsif_history.json'
+    qsif_history_by_ticker = {}
+    if qsif_history_file.exists():
+        with open(qsif_history_file) as f:
+            qsif_history_data = json.load(f)
+        for key, entry in qsif_history_data.items():
+            if key == '_metadata':
+                continue
+            ticker = isin_to_ticker.get(key.strip().upper()) or key
+            if ticker in [k for k in raw.keys() if k != '_metadata']:
+                qsif_history_by_ticker[ticker] = entry
+        logger.info(f"  ✓ Loaded qsif_history.json ({len(qsif_history_by_ticker)} tickers matched)")
+
     output  = {}
     symbols = [k for k in raw.keys() if k != '_metadata']  # Skip _metadata
     total   = len(symbols)
@@ -3334,6 +3356,36 @@ def main():
                 price['ltp_change_pct'] = nav.get('changePct')
             if nav.get('returns'):
                 price['ltp_returns'] = nav.get('returns')
+
+        # Inject qsif_history data (QSIF full NAV history) — latest
+        # snapshot folds into price (consistent with nav_ltp.json's
+        # ltp_nav/ltp_change fields above), full date series goes into
+        # its own nav_history section since it doesn't fit a scalar field.
+        qsif_hist = qsif_history_by_ticker.get(symbol)
+        if qsif_hist:
+            latest = qsif_hist.get('latest')
+            if latest:
+                price = bucketed.setdefault('price', {})
+                # Only overwrite ltp_nav fields if nav_ltp.json didn't
+                # already provide a fresher same-day value above — qsif
+                # history's 'latest' and nav_ltp's EOD entry should
+                # normally agree, but nav_ltp.json is the faster/more
+                # current source of the two if they ever briefly diverge.
+                if 'ltp_nav' not in price or price.get('ltp_nav') is None:
+                    price['ltp_nav'] = latest.get('ltp')
+                    price['ltp_date'] = latest.get('date')
+                    price['ltp_change'] = latest.get('change')
+                    price['ltp_change_pct'] = latest.get('changePct')
+                    price['ltp_scheme_name'] = qsif_hist.get('scheme_name')
+                    price['ltp_source'] = qsif_hist.get('source', 'qsif.com')
+
+            history_series = qsif_hist.get('history')
+            if history_series:
+                bucketed['nav_history'] = {
+                    'scheme_name': qsif_hist.get('scheme_name'),
+                    'source': qsif_hist.get('source', 'qsif.com'),
+                    'series': history_series,
+                }
 
         # Report any unmapped fields for visibility
         u = bucketed.get("_unmapped", {})

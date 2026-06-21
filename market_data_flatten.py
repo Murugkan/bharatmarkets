@@ -262,6 +262,7 @@ def load_all_data():
         'guidance': DATA_DIR / 'guidance.json',
         'prices': DATA_DIR / 'ltp.json',
         'nav_ltp': DATA_DIR / 'nav_ltp.json',
+        'qsif_history': DATA_DIR / 'qsif_history.json',
         'unified_symbols': DATA_DIR / 'unified-symbols.json',
     }
     
@@ -832,15 +833,16 @@ for TICKER in TICKERS_TO_PROCESS:
         # === ADD LTP FROM NAV_LTP (MF / QSIF fallback) ===
         # For tickers with no prices.json entry, look up nav_ltp.json by ISIN
         # (from unified-symbols.json) or directly by ticker symbol.
+        # ISIN is resolved once here and reused below for qsif_history too.
+        us_symbols = all_data.get('unified_symbols', {}).get('symbols', [])
+        isin = next(
+            (e.get('isin') for e in us_symbols
+             if (e.get('ticker') or e.get('symbol')) == TICKER),
+            None
+        )
+
         nav_ltp_data = all_data.get('nav_ltp', {})
         if nav_ltp_data:
-            # Resolve ISIN for this ticker from unified_symbols
-            us_symbols = all_data.get('unified_symbols', {}).get('symbols', [])
-            isin = next(
-                (e.get('isin') for e in us_symbols
-                 if (e.get('ticker') or e.get('symbol')) == TICKER),
-                None
-            )
             nav_entry = nav_ltp_data.get(isin) or nav_ltp_data.get(TICKER)
             if nav_entry and nav_entry.get('ltp') is not None:
                 nav_ltp_obj = {
@@ -858,6 +860,46 @@ for TICKER in TICKERS_TO_PROCESS:
                 if 'nav_ltp:latest_price' not in output[TICKER]['data']:
                     output[TICKER]['data']['nav_ltp:latest_price'] = []
                 output[TICKER]['data']['nav_ltp:latest_price'].insert(0, nav_ltp_obj)
+
+        # === ADD QSIF FULL HISTORY (latest snapshot + full date series) ===
+        # qsif_history.json is keyed by ISIN, accumulated via seed (manual,
+        # full history) + delta (scheduled, gap-fill) jobs in
+        # fetch_nav_ltp.py. Each entry has: scheme_name, source, latest
+        # ({date, ltp, change, changePct}), history ([{date, nav, change,
+        # changePct}, ...] oldest-to-newest).
+        qsif_history_data = all_data.get('qsif_history', {})
+        if qsif_history_data:
+            qsif_entry = qsif_history_data.get(isin) or qsif_history_data.get(TICKER)
+            if qsif_entry and qsif_entry.get('latest'):
+                latest = qsif_entry['latest']
+                qsif_latest_obj = {
+                    'metric': 'LTP',
+                    'source': qsif_entry.get('source', 'qsif.com'),
+                    'section': 'latest_price',
+                    'data': {
+                        'ltp': latest.get('ltp'),
+                        'date': latest.get('date'),
+                        'change': latest.get('change'),
+                        'changePct': latest.get('changePct'),
+                        'scheme_name': qsif_entry.get('scheme_name'),
+                    }
+                }
+                if 'qsif_history:latest_price' not in output[TICKER]['data']:
+                    output[TICKER]['data']['qsif_history:latest_price'] = []
+                output[TICKER]['data']['qsif_history:latest_price'].insert(0, qsif_latest_obj)
+
+                qsif_history_obj = {
+                    'metric': 'NAV_HISTORY',
+                    'source': qsif_entry.get('source', 'qsif.com'),
+                    'section': 'history',
+                    'data': {
+                        'scheme_name': qsif_entry.get('scheme_name'),
+                        'series': qsif_entry.get('history', []),
+                    }
+                }
+                if 'qsif_history:history' not in output[TICKER]['data']:
+                    output[TICKER]['data']['qsif_history:history'] = []
+                output[TICKER]['data']['qsif_history:history'].insert(0, qsif_history_obj)
 
         # === CLEAN AND FINALIZE ===
         output[TICKER]['data'] = clean_metric_names(output[TICKER]['data'])
@@ -888,6 +930,7 @@ try:
                 "guidance.json (29 tickers)",
                 "ltp.json (equity LTP)",
                 "nav_ltp.json (MF/QSIF)",
+                "qsif_history.json (QSIF full NAV history)",
                 "unified-symbols.json (97 tickers)"
             ],
             "structure": {
