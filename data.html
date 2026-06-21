@@ -556,7 +556,7 @@
             macro: 'macro_data.json',
             market_data: 'data/market_data.json',
             sector_indices: 'data/sector_indices.json',
-            nav_ltp: 'data/nav_ltp.json'
+            nav: 'data/nav.json'
         }
     };
     
@@ -617,6 +617,7 @@
     const DATA_SOURCES = [
         { name: 'unified-symbols.json', path: GITHUB_CONFIG.PATHS.symbols },
         { name: 'ltp.json', path: GITHUB_CONFIG.PATHS.ltp },
+        { name: 'nav.json', path: GITHUB_CONFIG.PATHS.nav },
         { name: 'market_data.json', path: GITHUB_CONFIG.PATHS.market_data },
         { name: 'sector_indices.json', path: GITHUB_CONFIG.PATHS.sector_indices }
     ];
@@ -831,6 +832,18 @@
                     })
                     .catch(() => { /* leave DB-only render in place */ });
 
+                // Async: fetch nav.json's live _metadata (Web Daily NAV row's
+                // Fetch time/count should reflect the file on GitHub, not the DB snapshot).
+                ghFetch('data/nav.json')
+                    .then(r => r.json())
+                    .then(json => {
+                        var navMeta = json._metadata || {};
+                        liveMetadata.nav_live_generated_at = navMeta.generated_at || null;
+                        liveMetadata.nav_live_count = navMeta.count ?? null;
+                        renderDataSourcesTable(html, liveMetadata);
+                    })
+                    .catch(() => { /* leave DB-only render in place */ });
+
                 // Async: fetch guidance.json live and count tickers whose
                 // guidance.date is older than 1 month (Refresh row count).
                 ghFetch('data/guidance.json')
@@ -868,7 +881,7 @@
     
     // Reads/formats a "last load" (UI load) timestamp stamped in localStorage by
     // the button handlers (loadAllData/updateLTPFromGitHub/reloadAuto/openWizard/
-    // triggerLTPWorkflowOnly). Does not affect any existing load logic.
+    // triggerLTPWorkflowOnly/triggerNAVWorkflowOnly). Does not affect any existing load logic.
     function getLastLoadIST(key) {
         var iso = localStorage.getItem(key);
         if (!iso) return '—';
@@ -890,6 +903,8 @@
                 count = metadata.market_data_count || '—';
             } else if (s.name === 'ltp.json') {
                 count = metadata.ltp_count || '—';
+            } else if (s.name === 'nav.json') {
+                count = metadata.nav_live_count ?? metadata.nav_count ?? '—';
             } else if (s.name === 'unified-symbols.json') {
                 count = metadata.symbols_count || '—';
             } else if (s.name === 'sector_indices.json') {
@@ -902,6 +917,8 @@
                 jsonTime = metadata.market_data_generated_at || '—';
             } else if (s.name === 'ltp.json') {
                 jsonTime = metadata.ltp_live_updated_at || '—';
+            } else if (s.name === 'nav.json') {
+                jsonTime = metadata.nav_live_generated_at || '—';
             } else if (s.name === 'sector_indices.json') {
                 jsonTime = metadata.ltp_updated_at || '—';
             } else if (s.name === 'unified-symbols.json') {
@@ -949,6 +966,9 @@
             } else if (s.name === 'ltp.json') {
                 actionBtn = `<button class="src-btn" onclick="triggerLTPWorkflowOnly()" style="background:linear-gradient(135deg, #0a7d8c 0%, #086b8c 100%); color:#cdf5ff; font-weight:800;">⚡ Web Delta Fetch</button>`;
                 lastLoadKey = 'lastLoad_ltp';
+            } else if (s.name === 'nav.json') {
+                actionBtn = `<button class="src-btn" onclick="triggerNAVWorkflowOnly()" style="background:linear-gradient(135deg, #0a7d8c 0%, #086b8c 100%); color:#cdf5ff; font-weight:800;">📊 Web Daily NAV</button>`;
+                lastLoadKey = 'lastLoad_nav';
             } else if (s.name === 'market_data.json') {
                 actionBtn = `<button class="src-btn${runningButtons['loadJsonBtn'] ? ' is-running' : ''}" id="loadJsonBtn" onclick="loadAllData()" style="background:linear-gradient(135deg, #0a7d8c 0%, #086b8c 100%); color:#cdf5ff; font-weight:800;">🚀 UI Full Load</button>`;
                 lastLoadKey = 'lastLoad_full';
@@ -3245,6 +3265,66 @@ function saveGuidanceToGitHub(ticker, jsonText, pat, date) {
                 showToast('❌ Invalid PAT token');
             } else if (r.status === 404) {
                 logError('Workflow not found', 'check fetch-eq-ltp.yml exists');
+                log('❌ Workflow Not Found');
+                showToast('❌ Workflow not found');
+            } else {
+                return r.text().then(text => {
+                    logError('Workflow dispatch failed', `HTTP ${r.status}`);
+                    log('❌ Workflow Error');
+                    showToast(`❌ Error: HTTP ${r.status}`);
+                });
+            }
+        })
+        .catch(err => {
+            logError('Workflow dispatch error', err.message);
+            log('❌ Error');
+            showToast(`❌ Error: ${err.message}`);
+        });
+    }
+    
+    
+    function triggerNAVWorkflowOnly() {
+        localStorage.setItem('lastLoad_nav', new Date().toISOString());
+        renderDataSources();
+        logInfo('Triggering GitHub workflow to fetch fresh NAV data');
+        log('⏳ Triggering Workflow');
+
+        const pat = localStorage.getItem('github_pat');
+        if (!pat) {
+            logWarning('PAT not configured - cannot trigger workflow');
+            showToast('❌ PAT required to trigger workflow');
+            return;
+        }
+
+        // Trigger the fetch-nav.yml workflow
+        const apiUrl = `https://api.github.com/repos/${GITHUB_CONFIG.OWNER}/${GITHUB_CONFIG.REPO}/actions/workflows/fetch-nav.yml/dispatches`;
+
+        logFetch(`workflow: ${apiUrl}`);
+
+        fetch(apiUrl, {
+            method: 'POST',
+            headers: {
+                'Authorization': `token ${pat}`,
+                'Accept': 'application/vnd.github.v3+json',
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                ref: GITHUB_CONFIG.BRANCH,
+                inputs: {}
+            })
+        })
+        .then(r => {
+            if (r.status === 204) {
+                logSuccess('Workflow dispatch accepted');
+                logInfo('NAV data will be updated on GitHub soon');
+                log('✅ Workflow Triggered');
+                showToast('✅ Workflow triggered! nav.json will be updated soon.', 'success');
+            } else if (r.status === 401) {
+                logError('Invalid PAT token');
+                log('❌ Invalid PAT');
+                showToast('❌ Invalid PAT token');
+            } else if (r.status === 404) {
+                logError('Workflow not found', 'check fetch-nav.yml exists');
                 log('❌ Workflow Not Found');
                 showToast('❌ Workflow not found');
             } else {
