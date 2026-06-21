@@ -746,9 +746,15 @@ def build_qsif_history_entry(scheme_name, dated_rows_oldest_first):
     sorted oldest to newest (one entry per distinct date — caller must
     already have deduped).
 
-    Output shape (one row per date, each carrying its own day-over-day
-    change, consistent with how AMFI/SGB entries already work elsewhere
-    in nav_ltp.json):
+    history is stored as `periods: {date: nav}` — ISO date (YYYY-MM-DD)
+    keys mapping straight to the raw NAV value, with NO per-row change/
+    changePct. This intentionally matches how every other financial KPI
+    time series in this pipeline is stored (e.g. yahoofin_raw's OHLCV
+    history in market_data_flatten.py, which is also a flat date->value
+    dict, not a list of rows with computed deltas) — so it can flow
+    through the SAME flatten transform path rather than a bespoke one.
+
+    Output shape:
 
         {
           "scheme_name": "...",
@@ -757,48 +763,46 @@ def build_qsif_history_entry(scheme_name, dated_rows_oldest_first):
             "date": "18-Jun-2026", "ltp": 10.4574,
             "change": 0.0006, "changePct": 0.0057
           },
-          "history": [
-            {"date": "16-Jun-2026", "nav": 10.3906, "change": null, "changePct": null},
-            {"date": "17-Jun-2026", "nav": 10.4568, "change": 0.0662, "changePct": 0.6369},
-            {"date": "18-Jun-2026", "nav": 10.4574, "change": 0.0006, "changePct": 0.0057}
-          ]
+          "periods": {
+            "2026-06-16": 10.3906,
+            "2026-06-17": 10.4568,
+            "2026-06-18": 10.4574
+          }
         }
 
-    The first (oldest) row in history has change=None since there's no
-    prior day in the stored series to diff against.
+    'latest' is the one place change/changePct still live — it's a
+    snapshot field (today vs yesterday), not a series, so computing it
+    once here is correct and unrelated to the periods/series convention
+    above.
     """
-    history = []
-    prev_nav = None
+    periods = {}
     for d, r in dated_rows_oldest_first:
-        nav = r['nav']
-        change = None
-        change_pct = None
-        if prev_nav is not None and prev_nav:
-            change = round(nav - prev_nav, 4)
-            change_pct = round((nav - prev_nav) / prev_nav * 100, 4)
-        history.append({
-            'date': d.strftime('%d-%b-%Y'),
-            'nav': nav,
-            'change': change,
-            'changePct': change_pct,
-        })
-        prev_nav = nav
+        periods[d.strftime('%Y-%m-%d')] = r['nav']
 
     latest = None
-    if history:
-        last = history[-1]
+    if dated_rows_oldest_first:
+        last_date, last_row = dated_rows_oldest_first[-1]
+        last_nav = last_row['nav']
+        change = None
+        change_pct = None
+        if len(dated_rows_oldest_first) >= 2:
+            prev_date, prev_row = dated_rows_oldest_first[-2]
+            prev_nav = prev_row['nav']
+            if prev_nav:
+                change = round(last_nav - prev_nav, 4)
+                change_pct = round((last_nav - prev_nav) / prev_nav * 100, 4)
         latest = {
-            'date': last['date'],
-            'ltp': last['nav'],
-            'change': last['change'],
-            'changePct': last['changePct'],
+            'date': last_date.strftime('%d-%b-%Y'),
+            'ltp': last_nav,
+            'change': change,
+            'changePct': change_pct,
         }
 
     return {
         'scheme_name': scheme_name,
         'source': 'qsif.com',
         'latest': latest,
-        'history': history,
+        'periods': periods,
     }
 
 
@@ -923,14 +927,19 @@ def run_qsif_nav_update():
 
     for isin, keyword in QSIF_SCHEME_KEYWORDS.items():
         prior = existing.get(isin, {})
-        prior_history = prior.get('history', [])
+        prior_periods = prior.get('periods', {})
 
-        # Find the latest saved date for this scheme
+        # Find the latest saved date for this scheme (periods keys are
+        # ISO 'YYYY-MM-DD' strings, so this also covers any file written
+        # under the older list-of-rows schema gracefully — prior_periods
+        # would just be empty for those, falling through to a full fetch).
         prior_dated = []
-        for h in prior_history:
-            d = parse_qsif_date(h.get('date', ''))
-            if d:
-                prior_dated.append((d, h))
+        for date_str, nav in prior_periods.items():
+            try:
+                d = datetime.strptime(date_str, '%Y-%m-%d')
+            except ValueError:
+                continue
+            prior_dated.append((d, {'nav': nav}))
         prior_dated.sort(key=lambda x: x[0])
 
         if not prior_dated:
@@ -946,8 +955,8 @@ def run_qsif_nav_update():
             if from_date > today:
                 qsif_logger.info(f"  {isin}: already up to date (latest saved {last_saved_date}), nothing to fetch")
                 # Rebuild through the helper even with no new data, so a
-                # file written under an older schema (no 'latest', no
-                # per-row change) self-heals to the current format.
+                # file written under an older schema self-heals to the
+                # current format (e.g. no 'latest', list-shaped history).
                 result[isin] = build_qsif_history_entry(
                     prior.get('scheme_name', isin), prior_dated
                 )
@@ -963,30 +972,29 @@ def run_qsif_nav_update():
                 )
             continue
 
-        # Merge prior + newly fetched rows by date (newly fetched nav wins
-        # on overlap, in case a date was re-published with a corrected
-        # value — unlikely but safer than silently keeping a stale nav).
-        merged_by_date = {h['date']: h['nav'] for h in prior_history if 'nav' in h}
+        # Merge prior + newly fetched rows by ISO date (newly fetched nav
+        # wins on overlap, in case a date was re-published with a
+        # corrected value — unlikely but safer than silently keeping a
+        # stale nav).
+        merged_by_date = dict(prior_periods)
         for r in matched:
             d = parse_qsif_date(r['date_str'])
             if d:
-                merged_by_date[d.strftime('%d-%b-%Y')] = r['nav']
+                merged_by_date[d.strftime('%Y-%m-%d')] = r['nav']
 
         merged_dated = []
         for date_str, nav in merged_by_date.items():
-            d = parse_qsif_date(date_str)
-            if d:
-                merged_dated.append((d, {'nav': nav}))
+            try:
+                d = datetime.strptime(date_str, '%Y-%m-%d')
+            except ValueError:
+                continue
+            merged_dated.append((d, {'nav': nav}))
         merged_dated.sort(key=lambda x: x[0])  # oldest first
 
-        new_count = len(merged_by_date) - len(
-            {h['date'] for h in prior_history if 'nav' in h}
-        )
+        new_count = len(merged_by_date) - len(prior_periods)
 
         scheme_name = matched[0]['scheme_name'] if matched else prior.get('scheme_name', isin)
-        # Rebuild the FULL series through the standard helper so change/
-        # changePct stay correct across the whole accumulated history
-        # (not just the newly appended tail), and 'latest' reflects the
+        # Rebuild through the standard helper so 'latest' reflects the
         # true most recent date after merging.
         result[isin] = build_qsif_history_entry(scheme_name, merged_dated)
         qsif_logger.info(
@@ -1067,7 +1075,7 @@ def main_qsif_nav():
                 "generated_at": now(),
                 "count": len(qsif_hist),
                 "source": "qsif.com",
-                "schema": "per-ISIN: {scheme_name, source, latest: {date, ltp, change, changePct}, history: [{date, nav, change, changePct}, ...] oldest-to-newest}"
+                "schema": "per-ISIN: {scheme_name, source, latest: {date, ltp, change, changePct}, periods: {YYYY-MM-DD: nav}}"
             }
         }
         output.update(qsif_hist)

@@ -262,7 +262,7 @@ def load_all_data():
         'guidance': DATA_DIR / 'guidance.json',
         'prices': DATA_DIR / 'ltp.json',
         'nav_ltp': DATA_DIR / 'nav_ltp.json',
-        'qsif_history': DATA_DIR / 'qsif_history.json',
+        'qsif_nav': DATA_DIR / 'qsif_nav.json',
         'unified_symbols': DATA_DIR / 'unified-symbols.json',
     }
     
@@ -693,7 +693,42 @@ for TICKER in TICKERS_TO_PROCESS:
                 except Exception as e:
                     ticker_errors.append(f"yahoofin_raw | {section_key} | {str(e)}")
                     logger.write_error(TICKER, 'yahoofin_raw', section_key, str(e))
-        
+
+        # === QSIF NAV HISTORY (from qsif_nav.json) ===
+        # Routed through the SAME metrics->periods mechanism as
+        # yahoofin_raw's OHLCV history above, so it flows through the
+        # existing TRANSFORM TO OUTPUT loop below rather than a separate
+        # bespoke path — qsif_nav.json's periods are already a flat
+        # {date: nav} dict (ISO keys), matching yahoofin_raw's shape
+        # exactly, by design (see build_qsif_history_entry() in
+        # fetch_nav_ltp.py). No per-row change/changePct, consistent with
+        # how every other financial KPI time series is stored here.
+        #
+        # ISIN resolved once here and reused below for the nav_ltp
+        # latest-price lookup too.
+        us_symbols = all_data.get('unified_symbols', {}).get('symbols', [])
+        isin = next(
+            (e.get('isin') for e in us_symbols
+             if (e.get('ticker') or e.get('symbol')) == TICKER),
+            None
+        )
+        qsif_nav_data = all_data.get('qsif_nav', {})
+        if qsif_nav_data:
+            qsif_entry = qsif_nav_data.get(isin) or qsif_nav_data.get(TICKER)
+            if qsif_entry and qsif_entry.get('periods'):
+                try:
+                    metrics['nav|nav_history'] = {
+                        'metric': 'nav',
+                        'section': 'nav_history',
+                        'source': 'qsif_nav',
+                        'granule': 'daily',
+                        'consolidation': 'consolidated',
+                        'periods': qsif_entry['periods'],
+                    }
+                except Exception as e:
+                    ticker_errors.append(f"qsif_nav | nav_history | {str(e)}")
+                    logger.write_error(TICKER, 'qsif_nav', 'nav_history', str(e))
+
         # === GUIDANCE ===
         guidance = all_data.get('guidance', {}).get(TICKER, {})
         for category in ['guidance', 'insights']:
@@ -831,16 +866,9 @@ for TICKER in TICKERS_TO_PROCESS:
             output[TICKER]['data'][daily_section] = daily_data
         
         # === ADD LTP FROM NAV_LTP (MF / QSIF fallback) ===
-        # For tickers with no prices.json entry, look up nav_ltp.json by ISIN
-        # (from unified-symbols.json) or directly by ticker symbol.
-        # ISIN is resolved once here and reused below for qsif_history too.
-        us_symbols = all_data.get('unified_symbols', {}).get('symbols', [])
-        isin = next(
-            (e.get('isin') for e in us_symbols
-             if (e.get('ticker') or e.get('symbol')) == TICKER),
-            None
-        )
-
+        # For tickers with no prices.json entry, look up nav_ltp.json by
+        # ISIN. ISIN was already resolved earlier (see QSIF NAV HISTORY
+        # block above) and is reused here.
         nav_ltp_data = all_data.get('nav_ltp', {})
         if nav_ltp_data:
             nav_entry = nav_ltp_data.get(isin) or nav_ltp_data.get(TICKER)
@@ -861,15 +889,16 @@ for TICKER in TICKERS_TO_PROCESS:
                     output[TICKER]['data']['nav_ltp:latest_price'] = []
                 output[TICKER]['data']['nav_ltp:latest_price'].insert(0, nav_ltp_obj)
 
-        # === ADD QSIF FULL HISTORY (latest snapshot + full date series) ===
-        # qsif_history.json is keyed by ISIN, accumulated via seed (manual,
-        # full history) + delta (scheduled, gap-fill) jobs in
-        # fetch_nav_ltp.py. Each entry has: scheme_name, source, latest
-        # ({date, ltp, change, changePct}), history ([{date, nav, change,
-        # changePct}, ...] oldest-to-newest).
-        qsif_history_data = all_data.get('qsif_history', {})
-        if qsif_history_data:
-            qsif_entry = qsif_history_data.get(isin) or qsif_history_data.get(TICKER)
+        # === ADD QSIF LATEST SNAPSHOT (ltp/change/changePct) ===
+        # The periods/full-history series was already routed through
+        # metrics above (see QSIF NAV HISTORY block) and flows through
+        # the standard TRANSFORM TO OUTPUT loop as qsif_nav:nav_history:
+        # daily. 'latest' is a snapshot field (today vs yesterday), not a
+        # series, so it's injected directly here rather than through the
+        # periods mechanism.
+        qsif_nav_data = all_data.get('qsif_nav', {})
+        if qsif_nav_data:
+            qsif_entry = qsif_nav_data.get(isin) or qsif_nav_data.get(TICKER)
             if qsif_entry and qsif_entry.get('latest'):
                 latest = qsif_entry['latest']
                 qsif_latest_obj = {
@@ -884,22 +913,9 @@ for TICKER in TICKERS_TO_PROCESS:
                         'scheme_name': qsif_entry.get('scheme_name'),
                     }
                 }
-                if 'qsif_history:latest_price' not in output[TICKER]['data']:
-                    output[TICKER]['data']['qsif_history:latest_price'] = []
-                output[TICKER]['data']['qsif_history:latest_price'].insert(0, qsif_latest_obj)
-
-                qsif_history_obj = {
-                    'metric': 'NAV_HISTORY',
-                    'source': qsif_entry.get('source', 'qsif.com'),
-                    'section': 'history',
-                    'data': {
-                        'scheme_name': qsif_entry.get('scheme_name'),
-                        'series': qsif_entry.get('history', []),
-                    }
-                }
-                if 'qsif_history:history' not in output[TICKER]['data']:
-                    output[TICKER]['data']['qsif_history:history'] = []
-                output[TICKER]['data']['qsif_history:history'].insert(0, qsif_history_obj)
+                if 'qsif_nav:latest_price' not in output[TICKER]['data']:
+                    output[TICKER]['data']['qsif_nav:latest_price'] = []
+                output[TICKER]['data']['qsif_nav:latest_price'].insert(0, qsif_latest_obj)
 
         # === CLEAN AND FINALIZE ===
         output[TICKER]['data'] = clean_metric_names(output[TICKER]['data'])
@@ -930,7 +946,7 @@ try:
                 "guidance.json (29 tickers)",
                 "ltp.json (equity LTP)",
                 "nav_ltp.json (MF/QSIF)",
-                "qsif_history.json (QSIF full NAV history)",
+                "qsif_nav.json (QSIF full NAV history)",
                 "unified-symbols.json (97 tickers)"
             ],
             "structure": {
