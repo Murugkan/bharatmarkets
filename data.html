@@ -954,14 +954,21 @@
                 fetchColorStyle = matches ? 'color:#00ff88;' : 'color:#ff4d6d;';
             }
             // For UI Delta Load (sector_indices.json) Fetch time, color green/red
-            // based on whether the LTP merge timestamp in DB (ltp_updated_at)
-            // is at or after the max-live time shown above (whichever of
-            // ltp.json/nav.json updated last on GitHub).
+            // based on whether the most recent DB merge timestamp (max of
+            // ltp_updated_at and nav_updated_at — they're written by separate
+            // merge steps and age independently) is at or after the max-live
+            // time shown above (whichever of ltp.json/nav.json updated last
+            // on GitHub).
             if (s.name === 'sector_indices.json') {
                 var maxLiveTime = deltaLiveTimes.length ? Math.max.apply(null, deltaLiveTimes) : null;
-                if (metadata.ltp_updated_at && maxLiveTime !== null) {
-                    var dbTime = new Date(metadata.ltp_updated_at).getTime();
-                    var deltaMatches = !isNaN(dbTime) && dbTime >= maxLiveTime;
+                var dbTimes = [metadata.ltp_updated_at, metadata.nav_updated_at]
+                    .filter(Boolean)
+                    .map(function(t) { return new Date(t).getTime(); })
+                    .filter(function(t) { return !isNaN(t); });
+                var maxDbTime = dbTimes.length ? Math.max.apply(null, dbTimes) : null;
+
+                if (maxDbTime !== null && maxLiveTime !== null) {
+                    var deltaMatches = maxDbTime >= maxLiveTime;
                     fetchColorStyle = deltaMatches ? 'color:#00ff88;' : 'color:#ff4d6d;';
                     deltaIsRed = !deltaMatches;
                 } else {
@@ -1020,21 +1027,9 @@
                 displayCount = `${metadata.ltp_count ?? '—'} / ${metadata.sector_indices_count ?? '—'}`;
             }
 
-            var loadRow = (index === 0 || s.name === 'ltp.json') ? '' : `<div class="last-load-cell"><b>${s.name === 'sector_indices.json' ? 'Load (DB merge)' : 'Load'}:</b> ${lastLoad}</div>`;
+            var loadRow = (index === 0 || s.name === 'ltp.json') ? '' : `<div class="last-load-cell"><b>Load:</b> ${lastLoad}</div>`;
 
-            if (s.name === 'sector_indices.json') {
-                rowParts[s.name] = `<div class="source-row" data-source="${s.name}">
-                    ${actionBtn}
-                    <div class="src-info">
-                        <div class="src-count count-cell">Count: ${displayCount}</div>
-                    </div>
-                    <div class="src-times">
-                        <div class="time-cell"><b>Fetch (max of ltp.json/nav.json):</b> <span style="${fetchColorStyle}">${istTime}</span></div>
-                        ${loadRow}
-                    </div>
-                </div>`;
-            } else {
-                rowParts[s.name] = `<div class="source-row" data-source="${s.name}">
+            rowParts[s.name] = `<div class="source-row" data-source="${s.name}">
                 ${actionBtn}
                 <div class="src-info">
                     <div class="src-count count-cell">Count: ${displayCount}</div>
@@ -1044,7 +1039,6 @@
                     ${loadRow}
                 </div>
             </div>`;
-            }
         });
 
         // "Web E2E Load" — triggers .github/workflows/e2e-pipeline.yml
@@ -3016,7 +3010,7 @@ function saveGuidanceToGitHub(ticker, jsonText, pat, date) {
                     logFetch('nav.json');
                     ghFetch('data/nav.json')
                         .then(r => r.json())
-                        .then(nav => mergeLTPIntoDB(flattenNavJson(nav), null, true))
+                        .then(nav => mergeLTPIntoDB(flattenNavJson(nav), nav._metadata && nav._metadata.generated_at, true))
                         .catch(e => { logWarning('nav skipped', e); })
                         .finally(() => res());
                 });
@@ -3103,6 +3097,7 @@ function saveGuidanceToGitHub(ticker, jsonText, pat, date) {
                         tickers_with_guidance: guidanceCount || 0,
                         ltp_updated_at: null,
                         ltp_count: null,
+                        nav_updated_at: null,
                         // Preserve these — they'll be filled by later steps in the chain
                         symbols_count: existing.symbols_count || null,
                         symbols_updated_at: existing.symbols_updated_at || null,
@@ -3294,16 +3289,19 @@ function saveGuidanceToGitHub(ticker, jsonText, pat, date) {
                     });
                     
                     // Read-modify-write: preserve ALL existing fields, only update LTP fields
-                    // isNav=true: skip ltp_updated_at so NAV merge doesn't clobber the LTP timestamp
+                    // isNav=true: store as nav_updated_at (separate field) instead of
+                    // clobbering ltp_updated_at — the two sources age independently,
+                    // so both timestamps need to survive in DB.
                     const getMetadataReq = store.get('_METADATA_');
                     getMetadataReq.onsuccess = function() {
                         const meta = getMetadataReq.result || { ticker: '_METADATA_' };
                         if (!isNav) { meta.ltp_updated_at = ltpTime; meta.ltp_count = mergedCount; }
-                        else { meta.ltp_count = (meta.ltp_count || 0) + mergedCount; }
+                        else { meta.nav_updated_at = ltpTime; meta.ltp_count = (meta.ltp_count || 0) + mergedCount; }
                         store.put(meta);
                     };
                     getMetadataReq.onerror = function() {
                         if (!isNav) store.put({ ticker: '_METADATA_', ltp_updated_at: ltpTime, ltp_count: mergedCount });
+                        else store.put({ ticker: '_METADATA_', nav_updated_at: ltpTime, ltp_count: mergedCount });
                     };
                 };
                 
@@ -3637,7 +3635,7 @@ function saveGuidanceToGitHub(ticker, jsonText, pat, date) {
                         logFetch('nav.json');
                         ghFetch('data/nav.json')
                             .then(r => r.json())
-                            .then(nav => mergeLTPIntoDB(flattenNavJson(nav), null, true))
+                            .then(nav => mergeLTPIntoDB(flattenNavJson(nav), nav._metadata && nav._metadata.generated_at, true))
                             .catch(e => { logWarning('nav skipped', e); })
                             .finally(() => {
                                 ghFetch('data/sector_indices.json')
@@ -3710,7 +3708,7 @@ function saveGuidanceToGitHub(ticker, jsonText, pat, date) {
                 logFetch('nav.json');
                 ghFetch('data/nav.json')
                     .then(r => r.json())
-                    .then(nav => mergeLTPIntoDB(flattenNavJson(nav), null, true))
+                    .then(nav => mergeLTPIntoDB(flattenNavJson(nav), nav._metadata && nav._metadata.generated_at, true))
                     .catch(e => { logWarning('nav skipped', e); })
                     .finally(() => res());
             }))
