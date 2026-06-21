@@ -22,7 +22,7 @@
    ============================================================ */
 
 var CONFIG = {
-  PASSWORD: "Xample "   // <-- SET PASSWORD HERE (plain text)
+  PASSWORD: "Xample"   // <-- SET PASSWORD HERE (plain text)
 };
 
 (function () {
