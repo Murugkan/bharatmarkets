@@ -16,7 +16,7 @@
    ============================================================ */
 
 var CONFIG = {
-  PASSWORD: "REPLACE_WITH_YOUR_PASSWORD"   // <-- SET PASSWORD HERE (plain text)
+  PASSWORD: "Xample"   // <-- SET PASSWORD HERE (plain text)
 };
 
 (function () {
