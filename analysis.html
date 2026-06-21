@@ -179,7 +179,7 @@ let currentTab = "overview";
 const S = {
   chartRange: 'MAX',  // period dropdown removed — always show full available history
   chartInterval: 'M',  // only ohlcv_monthly exists now (daily/weekly removed from pipeline)
-  navInterval: null,   // mutual fund NAV chart's own D/W/M toggle (separate from chartInterval). null = auto-resolve per fund based on its history length (see resolveNavInterval); set explicitly once the user picks a button
+  navInterval: 'M',    // mutual fund NAV chart's own D/W/M toggle (separate from chartInterval). Defaults to monthly; user can switch to D/W via the toolbar buttons
   maVis: { vol: true },
   kpiVis: { pe: false, rev: false, net: false, cfo: false, ncf: false, opm: false, op: false, pbt: false, eps: false, fcf: false, assets: false, borrowings: false, interest: false, ccr: false, promoter: false, roce: false, divpayout: false },
   chartPan: 0,
@@ -563,6 +563,17 @@ function renderHeader() {
     const s = currentStock;
     document.getElementById('ticker').textContent = get(s, 'ticker', 'sym', 'symbol');
     document.getElementById('company').textContent = get(s, 'name', 'company');
+
+    if (isMutualFund(s)) {
+        const navVal = (s.price && s.price.ltp_nav) || 0;
+        document.getElementById('ltp').textContent = '₹' + fmt(navVal, 3);
+        const chg = num((s.price || {}).ltp_change_pct);
+        const chgEl = document.getElementById('chg');
+        chgEl.innerHTML = `${chg >= 0 ? '▲' : '▼'} ${Math.abs(chg).toFixed(2)}%`;
+        chgEl.style.color = chg >= 0 ? 'var(--gr)' : 'var(--rd)';
+        return;
+    }
+
     document.getElementById('ltp').textContent = '₹' + fmt(resolveField(s, 'ltp') || '—');
     
     const chg = num(get(s, 'changePct', 'change', 'chg1d'));
@@ -992,9 +1003,8 @@ function renderTab(tab) {
         html = `<div style="padding:0;padding-bottom:100px">
           <div style="padding:8px 10px;background:var(--s1);border-bottom:1px solid var(--b1);display:flex;flex-wrap:wrap;align-items:center;gap:10px">
             <div style="display:flex;gap:2px">
-              ${['D','W','M'].map(iv => `<button onclick="setNavInterval('${iv}')" style="padding:3px 9px;font-size:9px;font-weight:800;font-family:var(--mono);border-radius:5px;border:1px solid ${activeInterval===iv?'var(--ac)':'var(--b1)'};background:${activeInterval===iv?'rgba(0,242,255,.12)':'var(--s1)'};color:${activeInterval===iv?'var(--ac)':'var(--tx3)'};cursor:pointer">${iv}</button>`).join('')}
+              ${['D','W','M'].map(iv => `<button onclick="setNavInterval('${iv}')" style="padding:4px 11px;font-size:11px;font-weight:800;font-family:var(--mono);border-radius:5px;border:1px solid ${activeInterval===iv?'var(--ac)':'var(--b1)'};background:${activeInterval===iv?'rgba(0,242,255,.12)':'var(--s1)'};color:${activeInterval===iv?'var(--ac)':'var(--tx3)'};cursor:pointer">${iv}</button>`).join('')}
             </div>
-            <span style="font-size:9px;font-weight:800;color:var(--ac);text-transform:uppercase;letter-spacing:.5px">📈 Mutual Fund NAV</span>
             <span style="flex:1"></span>
             <span style="font-size:11px;font-weight:800;color:var(--tx1)">₹${fmt(navVal, 3)}</span>
             <span style="font-size:10px;font-weight:700;color:${retColor(navChgPct)}">${fmtRet(navChgPct)}</span>
@@ -1007,7 +1017,7 @@ function renderTab(tab) {
               </div>`).join('')}
           </div>
           <div style="position:relative;background:var(--s1);border-bottom:1px solid var(--b1)">
-            <div id="chart-wrap" style="position:relative;width:100%;height:312px;touch-action:manipulation"><canvas id="cv-candle" style="display:block;width:100%;height:100%;touch-action:manipulation"></canvas></div>
+            <div id="chart-wrap" style="position:relative;width:100%;height:480px;touch-action:manipulation"><canvas id="cv-candle" style="display:block;width:100%;height:100%;touch-action:manipulation"></canvas></div>
           </div>
         </div>`;
         document.getElementById('content').innerHTML = html;
@@ -1625,7 +1635,7 @@ function drawNavLine(s){
 
     const wrap = document.getElementById('chart-wrap');
     const W2 = Math.max(wrap?wrap.offsetWidth:0, cv.offsetWidth, 280);
-    const H2 = 312;
+    const H2 = 480;
     const dpr = window.devicePixelRatio || 1;
     cv.width = W2*dpr; cv.height = H2*dpr;
     cv.style.width = W2+'px'; cv.style.height = H2+'px';
@@ -1642,7 +1652,7 @@ function drawNavLine(s){
       return;
     }
 
-    const W=W2, H=312;
+    const W=W2, H=480;
     const PAD={l:8,r:62,t:8,b:22};
     const cW=W-PAD.l-PAD.r, cH=H-PAD.t-PAD.b;
     const n=pts.length;
