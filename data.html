@@ -945,10 +945,18 @@
             }
             // For UI Delta Load (sector_indices.json) Fetch time, color green/red
             // based on whether the LTP merge timestamp in DB (ltp_updated_at)
-            // exactly matches Web Delta Fetch's live ltp.json timestamp.
+            // matches the most recent of ltp.json's and nav.json's live timestamps
+            // on GitHub — whichever of the two was last updated.
             if (s.name === 'sector_indices.json') {
-                if (metadata.ltp_updated_at && metadata.ltp_live_updated_at) {
-                    var deltaMatches = metadata.ltp_updated_at === metadata.ltp_live_updated_at;
+                var liveTimes = [metadata.ltp_live_updated_at, metadata.nav_live_generated_at]
+                    .filter(Boolean)
+                    .map(function(t) { return new Date(t).getTime(); })
+                    .filter(function(t) { return !isNaN(t); });
+                var maxLiveTime = liveTimes.length ? Math.max.apply(null, liveTimes) : null;
+
+                if (metadata.ltp_updated_at && maxLiveTime !== null) {
+                    var dbTime = new Date(metadata.ltp_updated_at).getTime();
+                    var deltaMatches = !isNaN(dbTime) && dbTime >= maxLiveTime;
                     fetchColorStyle = deltaMatches ? 'color:#00ff88;' : 'color:#ff4d6d;';
                     deltaIsRed = !deltaMatches;
                 } else {
@@ -2802,12 +2810,60 @@ function saveGuidanceToGitHub(ticker, jsonText, pat, date) {
             return;
         }
         log('🔗 Testing GitHub connection...');
-        setTimeout(() => {
-            document.getElementById('patStatus').textContent = '✅ Configured';
-            document.getElementById('patRepo').textContent = 'murugkan/bharatmarkets';
-            log('✅ Connected to GitHub');
-            showToast('✅ Connected!');
-        }, 1000);
+        document.getElementById('patStatus').textContent = '⏳ Testing...';
+
+        // Real check against GitHub — same repo path the trigger buttons use.
+        // A 200 here means the token is valid AND has at least read access to
+        // this repo. Classic PATs also return their granted scopes in the
+        // X-OAuth-Scopes header, which lets us flag a missing `workflow` scope
+        // up front instead of only discovering it when a dispatch 403s.
+        fetch(`https://api.github.com/repos/${GITHUB_CONFIG.OWNER}/${GITHUB_CONFIG.REPO}`, {
+            headers: {
+                'Authorization': `token ${pat}`,
+                'Accept': 'application/vnd.github.v3+json'
+            }
+        })
+        .then(r => {
+            if (r.status === 200) {
+                var scopesHeader = r.headers.get('x-oauth-scopes') || '';
+                var scopes = scopesHeader.split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+                var hasWorkflowScope = scopes.length === 0 // fine-grained PATs don't send this header at all
+                    || scopes.indexOf('workflow') !== -1
+                    || scopes.indexOf('repo') !== -1; // classic 'repo' scope implies workflow_dispatch too
+
+                if (hasWorkflowScope) {
+                    document.getElementById('patStatus').textContent = '✅ Configured';
+                    log('✅ Connected to GitHub' + (scopesHeader ? ` (scopes: ${scopesHeader})` : ''));
+                    showToast('✅ Connected!');
+                } else {
+                    document.getElementById('patStatus').textContent = '⚠️ Missing workflow scope';
+                    log(`⚠️ Token valid but missing 'workflow' scope (have: ${scopesHeader || 'none reported'}) — Workflow triggers will fail with 401/403`);
+                    showToast('⚠️ Token lacks workflow scope — triggers will fail');
+                }
+                document.getElementById('patRepo').textContent = `${GITHUB_CONFIG.OWNER}/${GITHUB_CONFIG.REPO}`;
+            } else if (r.status === 401) {
+                document.getElementById('patStatus').textContent = '❌ Invalid Token';
+                document.getElementById('patRepo').textContent = '—';
+                log('❌ PAT rejected by GitHub (401 — invalid or expired token)');
+                showToast('❌ Invalid PAT token');
+            } else if (r.status === 404) {
+                document.getElementById('patStatus').textContent = '❌ No Repo Access';
+                document.getElementById('patRepo').textContent = '—';
+                log('❌ PAT valid but cannot access repo (404 — check repo name or token scope)');
+                showToast('❌ Token cannot access this repo');
+            } else {
+                document.getElementById('patStatus').textContent = `❌ Error (HTTP ${r.status})`;
+                document.getElementById('patRepo').textContent = '—';
+                log(`❌ Unexpected response testing PAT: HTTP ${r.status}`);
+                showToast(`❌ Error: HTTP ${r.status}`);
+            }
+        })
+        .catch(err => {
+            document.getElementById('patStatus').textContent = '❌ Network Error';
+            document.getElementById('patRepo').textContent = '—';
+            log(`❌ PAT test failed: ${err.message}`);
+            showToast(`❌ Error: ${err.message}`);
+        });
     }
 
     function loadAllData() {
@@ -2969,7 +3025,7 @@ function saveGuidanceToGitHub(ticker, jsonText, pat, date) {
                 }
 
                 // Clear localStorage except essentials
-                const keep = ['github_pat', 'concallTimestamps', 'insightsTimestamps', 'guidanceData', 'etl_logs'];
+                const keep = ['github_pat', 'concallTimestamps', 'insightsTimestamps', 'guidanceData', 'etl_logs', 'bm_auth_until', 'bm_auth_token'];
                 const saved = {};
                 keep.forEach(k => { const v = localStorage.getItem(k); if (v !== null) saved[k] = v; });
                 localStorage.clear();
@@ -3677,7 +3733,7 @@ function saveGuidanceToGitHub(ticker, jsonText, pat, date) {
             caches.keys().then(names => names.forEach(n => caches.delete(n)));
         }
         // Clear localStorage except essentials
-        const keep = ['github_pat', 'concallTimestamps', 'insightsTimestamps', 'guidanceData', 'etl_logs'];
+        const keep = ['github_pat', 'concallTimestamps', 'insightsTimestamps', 'guidanceData', 'etl_logs', 'bm_auth_until', 'bm_auth_token'];
         const saved = {};
         keep.forEach(k => { const v = localStorage.getItem(k); if (v !== null) saved[k] = v; });
         localStorage.clear();
