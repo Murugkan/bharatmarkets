@@ -1000,8 +1000,8 @@ function renderTab(tab) {
         // point count for highlighting the correct D/W/M button on first render.
         ensureNavCache(s);
         const activeInterval = S.navInterval || resolveNavInterval(s);
-        html = `<div style="padding:0;margin-left:-10px;margin-right:-10px">
-          <div style="padding:8px 10px;background:var(--s1);border-bottom:1px solid var(--b1);display:flex;flex-wrap:wrap;align-items:center;gap:10px">
+        html = `<div style="padding:0;margin-left:-12px;margin-right:-12px;margin-bottom:-70px">
+          <div style="padding:8px 22px;background:var(--s1);border-bottom:1px solid var(--b1);display:flex;flex-wrap:wrap;align-items:center;gap:10px">
             <div style="display:flex;gap:2px">
               ${['D','W','M'].map(iv => `<button onclick="setNavInterval('${iv}')" style="padding:4px 11px;font-size:11px;font-weight:800;font-family:var(--mono);border-radius:5px;border:1px solid ${activeInterval===iv?'var(--ac)':'var(--b1)'};background:${activeInterval===iv?'rgba(0,242,255,.12)':'var(--s1)'};color:${activeInterval===iv?'var(--ac)':'var(--tx3)'};cursor:pointer">${iv}</button>`).join('')}
             </div>
@@ -1009,7 +1009,7 @@ function renderTab(tab) {
             <span style="font-size:11px;font-weight:800;color:var(--tx1)">₹${fmt(navVal, 3)}</span>
             <span style="font-size:10px;font-weight:700;color:${retColor(navChgPct)}">${fmtRet(navChgPct)}</span>
           </div>
-          <div style="display:flex;flex-wrap:wrap;gap:0;padding:6px 10px;background:var(--card);border-bottom:1px solid var(--b1);align-items:center">
+          <div style="display:flex;flex-wrap:wrap;gap:0;padding:6px 22px;background:var(--card);border-bottom:1px solid var(--b1);align-items:center">
             ${[['1m',ret['1m']],['3m',ret['3m']],['6m',ret['6m']],['1y',ret['1y']],['3y',ret['3y']]].map(([lbl,v])=>`
               <div style="flex:1;min-width:56px;text-align:center;padding:4px 2px">
                 <div style="font-size:8px;color:var(--tx3);font-weight:700;text-transform:uppercase">${lbl}</div>
@@ -1017,7 +1017,7 @@ function renderTab(tab) {
               </div>`).join('')}
           </div>
           <div style="position:relative;background:var(--s1);border-bottom:1px solid var(--b1)">
-            <div id="chart-wrap" style="position:relative;width:100%;height:400px;touch-action:manipulation"><canvas id="cv-candle" style="display:block;width:100%;height:100%;touch-action:manipulation"></canvas></div>
+            <div id="chart-wrap" style="position:relative;width:100%;height:415px;touch-action:manipulation"><canvas id="cv-candle" style="display:block;width:100%;height:100%;touch-action:manipulation"></canvas></div>
           </div>
         </div>`;
         document.getElementById('content').innerHTML = html;
@@ -1635,7 +1635,7 @@ function drawNavLine(s){
 
     const wrap = document.getElementById('chart-wrap');
     const W2 = Math.max(wrap?wrap.offsetWidth:0, cv.offsetWidth, 280);
-    const H2 = 400;
+    const H2 = 415;
     const dpr = window.devicePixelRatio || 1;
     cv.width = W2*dpr; cv.height = H2*dpr;
     cv.style.width = W2+'px'; cv.style.height = H2+'px';
@@ -1652,7 +1652,7 @@ function drawNavLine(s){
       return;
     }
 
-    const W=W2, H=400;
+    const W=W2, H=415;
     const PAD={l:8,r:62,t:8,b:21};
     const cW=W-PAD.l-PAD.r, cH=H-PAD.t-PAD.b;
     const n=pts.length;
