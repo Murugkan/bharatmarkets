@@ -1653,7 +1653,7 @@ function drawNavLine(s){
     }
 
     const W=W2, H=400;
-    const PAD={l:8,r:62,t:8,b:26};
+    const PAD={l:8,r:62,t:8,b:21};
     const cW=W-PAD.l-PAD.r, cH=H-PAD.t-PAD.b;
     const n=pts.length;
 
@@ -1688,7 +1688,7 @@ function drawNavLine(s){
 
     // Grid lines — denser than the equity chart since NAV oscillations are
     // often small relative to the full y-range.
-    const GRID_DIV = 12;
+    const GRID_DIV = 13;
     for(let i=0;i<=GRID_DIV;i++){
       const y=PAD.t+(cH/GRID_DIV)*i;
       ctx.strokeStyle='rgba(255,255,255,.16)';ctx.lineWidth=1;
@@ -1773,9 +1773,9 @@ function drawNavLine(s){
       const lbl = parts[1]+'/'+parts[0].slice(2);
       const x = toX(p._t);
       const isLast = i === n-1;
-      if(!isLast && x > PAD.l+cW-8) return; // skip near-edge intermediate labels (would collide with the last one), but never skip the last point itself
+      if(!isLast && x > PAD.l+cW-45) return; // skip labels that would collide with the always-drawn last label (≈ one label-width of clearance)
       ctx.textAlign = i===0 ? 'left' : (isLast ? 'right' : 'center');
-      ctx.fillText(lbl, isLast ? PAD.l+cW : x, PAD.t+cH+6);
+      ctx.fillText(lbl, isLast ? PAD.l+cW : x, PAD.t+cH+4);
     });
   } catch(e) {
     const cv = document.getElementById('cv-candle');
