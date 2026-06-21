@@ -8,22 +8,27 @@ Part 1 — AMFI NAV:
   holdings (instrumentType == "MUTUAL FUND" or "SOVEREIGN BOND" with an ISIN
   that matches an AMFI-listed scheme — SGBs are not in AMFI; included here in
   case a fund-of-fund SGB wrapper is used).
-  Output: data/mf_nav.json
 
-Part 2 — QSIF NAV:
-  Scrapes daily NAV history from qsif.com/nav/historical_nav (a single page
-  that lists ALL QSIF schemes' NAV history, paginated, no search/postback
-  needed — a plain GET returns the full table). Matches rows by scheme_name
-  keyword (case-insensitive substring) for entries in unified-symbols.json
-  where instrument_type == "SIF". Change/changePct are computed directly
-  from the two most recent rows found on the page itself (not by diffing
-  against the previous day's output file), so this no longer depends on
-  nav_ltp.json from a prior run.
-  Output: data/qsif_nav.json
+Part 2 — QSIF NAV — split into two modes (run as two separate jobs):
+
+  `python fetch_nav_ltp.py` or `python fetch_nav_ltp.py eod` (default):
+    FAST daily path. Uses the site's search box (txtschname + BtnGo
+    postback, confirmed from page source) to fetch just the latest page
+    (10 rows) per held scheme — always enough for latest NAV + 1D change.
+    Output: data/nav_ltp.json (AMFI + QSIF EOD combined, original schema).
+
+  `python fetch_nav_ltp.py history`:
+    SLOW full-history path. Same search mechanism, but paginates each
+    scheme's result until pagination genuinely ends (can be a minute+ per
+    scheme — confirmed ~17 pages/~170 rows for one scheme in testing).
+    Intended to run separately and far less often than the daily EOD job.
+    Output: data/qsif_history.json (separate file: {isin: {scheme_name,
+    history: [{date, nav}, ...]}}, oldest-to-newest).
 """
 
 import json
 import logging
+import random
 import re
 import requests
 import subprocess
@@ -36,6 +41,7 @@ DATA_DIR = Path('data')
 SYMBOLS_FILE = DATA_DIR / 'unified-symbols.json'
 
 NAV_LTP_OUTPUT_FILE = DATA_DIR / 'nav_ltp.json'
+QSIF_HISTORY_OUTPUT_FILE = DATA_DIR / 'qsif_history.json'
 
 LOG_FILE = DATA_DIR / 'logs/fetch_nav_ltp.log'
 
@@ -91,7 +97,7 @@ def save_json(path, data):
         json.dump(data, f, indent=2, ensure_ascii=False, default=str)
 
 
-def git_commit_and_push(paths, message):
+def git_commit_and_push(paths, message, max_attempts=5):
     """Commit and push the given file paths directly from this script.
 
     Runs `git add/commit/push` so the workflow YAML no longer needs to own
@@ -99,6 +105,13 @@ def git_commit_and_push(paths, message):
     same process, immediately after writing it. Avoids the checkout/commit
     ordering issue where a separate workflow step could run against a stale
     working directory and make 'previous' data look identical to 'current'.
+
+    Retries on push rejection (e.g. another concurrent job in the same
+    workflow run pushed first) via fetch + rebase, matching the pattern
+    already used by every other commit step in e2e-parallel.yml. Without
+    this, a rejected push would silently drop this run's data entirely —
+    confirmed in practice when a same-run QSIF history fetch (a slow,
+    ~17-page job) was lost to exactly this race.
 
     Safe to call in CI: if there's nothing to commit (no changes), this is
     a no-op rather than an error. Requires the runner to already have git
@@ -117,8 +130,20 @@ def git_commit_and_push(paths, message):
             return
 
         subprocess.run(["git", "commit", "-m", message], check=True)
-        subprocess.run(["git", "push"], check=True)
-        logger.info(f"✓ Committed and pushed: {message}")
+
+        for attempt in range(1, max_attempts + 1):
+            push = subprocess.run(["git", "push"])
+            if push.returncode == 0:
+                logger.info(f"✓ Committed and pushed: {message} (attempt {attempt})")
+                return
+            if attempt >= max_attempts:
+                logger.error(f"⚠ Push failed after {max_attempts} attempts: {message}")
+                return
+            logger.warning(f"  Push rejected (attempt {attempt}/{max_attempts}) — fetching and rebasing, then retrying...")
+            time.sleep(random.uniform(1, 5))
+            subprocess.run(["git", "fetch", "origin", "main"], check=True)
+            subprocess.run(["git", "rebase", "origin/main"], check=True)
+
     except subprocess.CalledProcessError as e:
         logger.error(f"⚠ Git commit/push failed: {e}")
     except Exception as e:
@@ -600,18 +625,18 @@ def parse_qsif_date(date_str):
         return None
 
 
-def run_qsif_nav():
-    """Fetch full QSIF NAV history and compute LTP + 1D change per held ISIN.
+def run_qsif_nav_eod():
+    """Fetch QSIF EOD NAV (latest + 1D change) per held ISIN — FAST path.
 
-    Uses the site's own search box (confirmed from page source: input
-    field ctl00$ContentPlaceHolder1$txtschname, 'Go' button is a
-    __doPostBack) to fetch each held scheme's full history directly,
-    rather than paginating through all ~20 unrelated QSIF schemes and
-    filtering client-side. One search per ISIN in QSIF_SCHEME_KEYWORDS.
+    Uses the site's search box to fetch just the first page (10 rows) per
+    scheme, which is always enough for the latest date + previous date
+    needed to compute a 1D change. Does NOT paginate further — for full
+    multi-year history, see run_qsif_nav_history() / qsif_history.json,
+    which is a separate, much slower job.
 
-    change/changePct are computed from the two most recent dated rows
-    in that scheme's own history — not by diffing against nav_ltp.json
-    from a previous run.
+    Output schema matches the original nav_ltp.json structure (no
+    'history' field) so this stays a drop-in daily EOD source alongside
+    AMFI MF/SGB data.
     """
     if not QSIF_SCHEME_KEYWORDS:
         qsif_logger.warning("No QSIF_SCHEME_KEYWORDS configured")
@@ -621,15 +646,13 @@ def run_qsif_nav():
     result = {}
 
     for isin, keyword in QSIF_SCHEME_KEYWORDS.items():
-        qsif_logger.info(f"  Fetching full history for {isin} (search: '{keyword}')")
-        matched = fetch_qsif_scheme_full_history(session, keyword)
+        qsif_logger.info(f"  Fetching EOD NAV for {isin} (search: '{keyword}')")
+        matched, _next_url, _event_target, _hidden = search_qsif_scheme(session, keyword)
 
         if not matched:
             qsif_logger.warning(f"  ⚠ {isin}: search for '{keyword}' returned no rows")
             continue
 
-        # Dedup by date — defensive, in case pagination ever returns a
-        # page twice (would otherwise risk comparing a date to itself).
         seen = set()
         deduped = []
         for r in matched:
@@ -637,13 +660,8 @@ def run_qsif_nav():
                 continue
             seen.add(r['date_str'])
             deduped.append(r)
-        if len(deduped) < len(matched):
-            qsif_logger.warning(
-                f"  ⚠ {isin}: removed {len(matched) - len(deduped)} duplicate date row(s)"
-            )
         matched = deduped
 
-        # Sort by parsed date, most recent first; drop unparseable dates
         dated = []
         for r in matched:
             d = parse_qsif_date(r['date_str'])
@@ -662,8 +680,8 @@ def run_qsif_nav():
             prev_date, prev_row = dated[1]
             if prev_date == curr_date:
                 qsif_logger.warning(
-                    f"  ⚠ {isin}: two most recent rows share the same date ({curr_date.date()}) "
-                    f"after dedup. Leaving change as None rather than reporting a false 0.0."
+                    f"  ⚠ {isin}: two most recent rows share the same date ({curr_date.date()}). "
+                    f"Leaving change as None rather than reporting a false 0.0."
                 )
             else:
                 curr_nav = curr_row['nav']
@@ -685,21 +703,84 @@ def run_qsif_nav():
             'source': 'qsif.com',
             'change': change,
             'changePct': change_pct,
-            'history': [
-                {'date': d.strftime('%d-%b-%Y'), 'nav': r['nav']}
-                for d, r in sorted(dated, key=lambda x: x[0])  # oldest first
-            ],
         }
-        qsif_logger.info(
-            f"  ✓ {isin}: LTP {curr_row['nav']} ({curr_row['date_str']}) | "
-            f"{len(dated)} dated rows in full history"
-        )
+        qsif_logger.info(f"  ✓ {isin}: LTP {curr_row['nav']} ({curr_row['date_str']})")
 
     missing = set(QSIF_SCHEME_KEYWORDS.keys()) - set(result.keys())
     if missing:
         qsif_logger.warning(f"  ⚠ {len(missing)} ISIN(s) not matched: {sorted(missing)}")
 
-    qsif_logger.info(f"  ✓ Matched {len(result)}/{len(QSIF_SCHEME_KEYWORDS)} QSIF entries")
+    qsif_logger.info(f"  ✓ Matched {len(result)}/{len(QSIF_SCHEME_KEYWORDS)} QSIF entries (EOD)")
+    return result
+
+
+def run_qsif_nav_history():
+    """Fetch FULL available QSIF NAV history per held ISIN — SLOW path.
+
+    Paginates the search result for each scheme until pagination genuinely
+    ends, which can take a minute or more per scheme (confirmed: ~17 pages
+    / ~170 rows for one scheme in testing). Intended to run separately
+    and much less frequently than the daily EOD fetch — see
+    run_qsif_nav_eod() / nav_ltp.json for the fast daily path.
+
+    Output: {isin: {scheme_name, history: [{date, nav}, ...]}} written to
+    qsif_history.json, oldest-to-newest per scheme.
+    """
+    if not QSIF_SCHEME_KEYWORDS:
+        qsif_logger.warning("No QSIF_SCHEME_KEYWORDS configured")
+        return {}
+
+    session = requests.Session()
+    result = {}
+
+    for isin, keyword in QSIF_SCHEME_KEYWORDS.items():
+        qsif_logger.info(f"  Fetching full history for {isin} (search: '{keyword}')")
+        matched = fetch_qsif_scheme_full_history(session, keyword)
+
+        if not matched:
+            qsif_logger.warning(f"  ⚠ {isin}: search for '{keyword}' returned no rows")
+            continue
+
+        seen = set()
+        deduped = []
+        for r in matched:
+            if r['date_str'] in seen:
+                continue
+            seen.add(r['date_str'])
+            deduped.append(r)
+        if len(deduped) < len(matched):
+            qsif_logger.warning(
+                f"  ⚠ {isin}: removed {len(matched) - len(deduped)} duplicate date row(s)"
+            )
+        matched = deduped
+
+        dated = []
+        for r in matched:
+            d = parse_qsif_date(r['date_str'])
+            if d:
+                dated.append((d, r))
+        dated.sort(key=lambda x: x[0])  # oldest first for storage
+
+        if not dated:
+            qsif_logger.warning(f"  ⚠ {isin}: matched rows but none had parseable dates")
+            continue
+
+        scheme_name = matched[0]['scheme_name']
+        result[isin] = {
+            'scheme_name': scheme_name,
+            'source': 'qsif.com',
+            'history': [
+                {'date': d.strftime('%d-%b-%Y'), 'nav': r['nav']}
+                for d, r in dated
+            ],
+        }
+        qsif_logger.info(f"  ✓ {isin}: {len(dated)} dated rows in full history")
+
+    missing = set(QSIF_SCHEME_KEYWORDS.keys()) - set(result.keys())
+    if missing:
+        qsif_logger.warning(f"  ⚠ {len(missing)} ISIN(s) not matched: {sorted(missing)}")
+
+    qsif_logger.info(f"  ✓ Matched {len(result)}/{len(QSIF_SCHEME_KEYWORDS)} QSIF entries (history)")
     return result
 
 
@@ -707,7 +788,9 @@ def run_qsif_nav():
 # Main
 # ===========================================================================
 
-def main():
+def main_eod():
+    """Daily EOD fetch: AMFI (MF/SGB) + QSIF latest NAV/change. FAST.
+    Writes data/nav_ltp.json (existing structure, unchanged)."""
     merged = {}
 
     try:
@@ -717,13 +800,10 @@ def main():
         logger.warning(f"  ⚠ AMFI NAV run failed: {e}")
 
     try:
-        qsif = run_qsif_nav()
-        # change/changePct are already computed inside run_qsif_nav() from
-        # the historical NAV table itself — no need to diff against a
-        # previously-saved nav_ltp.json here.
+        qsif = run_qsif_nav_eod()
         merged.update(qsif)
     except Exception as e:
-        qsif_logger.warning(f"  ⚠ QSIF NAV run failed: {e}")
+        qsif_logger.warning(f"  ⚠ QSIF EOD NAV run failed: {e}")
 
     output = {"_metadata": {"generated_at": now(), "count": len(merged), "source": "AMFI + qsif.com"}}
     output.update(merged)
@@ -736,5 +816,37 @@ def main():
     )
 
 
+def main_history():
+    """Full QSIF history fetch. SLOW (minutes, multiple pages per scheme).
+    Writes data/qsif_history.json — separate file, run infrequently
+    (e.g. weekly/monthly), independent of the daily EOD job."""
+    try:
+        qsif_hist = run_qsif_nav_history()
+    except Exception as e:
+        qsif_logger.warning(f"  ⚠ QSIF history run failed: {e}")
+        qsif_hist = {}
+
+    output = {
+        "_metadata": {
+            "generated_at": now(),
+            "count": len(qsif_hist),
+            "source": "qsif.com"
+        }
+    }
+    output.update(qsif_hist)
+    save_json(QSIF_HISTORY_OUTPUT_FILE, output)
+    qsif_logger.info(f"✓ Wrote {QSIF_HISTORY_OUTPUT_FILE} ({len(qsif_hist)} entries)")
+
+    git_commit_and_push(
+        [QSIF_HISTORY_OUTPUT_FILE],
+        f"Update qsif_history.json ({len(qsif_hist)} entries) [skip ci]"
+    )
+
+
 if __name__ == "__main__":
-    main()
+    import sys
+    mode = sys.argv[1] if len(sys.argv) > 1 else "eod"
+    if mode == "history":
+        main_history()
+    else:
+        main_eod()
