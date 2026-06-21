@@ -2061,10 +2061,17 @@ def reorganize_identity_shareholding(bucketed: dict) -> dict:
             pattern_obj[key] = flat
     
     # ── Shares (MOVE from top level, apply renames) ────────────────────────────
+    # NOTE: 'shares_outstanding' is renamed to 'shares_outstanding_snapshot' here
+    # to disambiguate from valuation.history.shares_outstanding, which is a
+    # DIFFERENT field — a Yahoo-statement-derived annual TIME SERIES, not this
+    # point-in-time snapshot from Yahoo's info/shareholding data. Same field
+    # name, different bucket, different meaning — was previously ambiguous
+    # for anyone reading by field name alone instead of full path.
     shares_obj = {}
     for old, new in [
         ('float_shares',               'floating_shares'),
-        ('shares_outstanding',         'shares_outstanding'),
+        ('shares_outstanding',         'shares_outstanding_snapshot'),
+        ('shares_outstanding_snapshot','shares_outstanding_snapshot'),  # post-rename name
         ('implied_shares_outstanding', 'implied_shares'),
         ('implied_shares',             'implied_shares'),       # post-rename name
         ('floating_shares',            'floating_shares'),      # post-rename name
@@ -2626,6 +2633,7 @@ def standardize_field_names(bucketed: dict) -> dict:
             sh['shares'] = rename_keys(sh['shares'], {
                 'float_shares':               'floating_shares',
                 'implied_shares_outstanding': 'implied_shares',
+                'shares_outstanding':         'shares_outstanding_snapshot',
             })
         # Drop __drop__ sentinel keys
         cd = {k: v for k, v in cd.items() if v != '__drop__' and k != '__drop__'}
