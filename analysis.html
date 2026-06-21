@@ -179,7 +179,7 @@ let currentTab = "overview";
 const S = {
   chartRange: 'MAX',  // period dropdown removed — always show full available history
   chartInterval: 'M',  // only ohlcv_monthly exists now (daily/weekly removed from pipeline)
-  navInterval: 'W',    // mutual fund NAV chart's own D/W/M toggle (separate from chartInterval) — defaults to weekly so years of daily NAV history don't require excessive panning
+  navInterval: null,   // mutual fund NAV chart's own D/W/M toggle (separate from chartInterval). null = auto-resolve per fund based on its history length (see resolveNavInterval); set explicitly once the user picks a button
   maVis: { vol: true },
   kpiVis: { pe: false, rev: false, net: false, cfo: false, ncf: false, opm: false, op: false, pbt: false, eps: false, fcf: false, assets: false, borrowings: false, interest: false, ccr: false, promoter: false, roce: false, divpayout: false },
   chartPan: 0,
@@ -968,8 +968,21 @@ function renderTab(tab) {
         const retColor = v => (v === undefined || v === null) ? 'var(--tx3)' : (v >= 0 ? 'var(--gr2)' : 'var(--rd2)');
         const navVal = num(get(s, 'ltp_nav')) || num((s.price||{}).ltp_nav);
         const navChgPct = (s.price||{}).ltp_change_pct;
+        // Ensure _navCache exists so resolveNavInterval can read the real
+        // point count for highlighting the correct D/W/M button on first render.
+        if(!s._navCache) {
+            const periods = (s.nav_history && s.nav_history.periods) || {};
+            s._navCache = Object.keys(periods)
+                .map(d => ({ d, v: parseFloat(periods[d]) || 0 }))
+                .filter(p => p.d && p.v > 0)
+                .sort((a, b) => a.d.localeCompare(b.d));
+        }
+        const activeInterval = S.navInterval || resolveNavInterval(s);
         html = `<div style="padding:0;padding-bottom:100px">
           <div style="padding:8px 10px;background:var(--s1);border-bottom:1px solid var(--b1);display:flex;flex-wrap:wrap;align-items:center;gap:10px">
+            <div style="display:flex;gap:2px">
+              ${['D','W','M'].map(iv => `<button onclick="setNavInterval('${iv}')" style="padding:3px 9px;font-size:9px;font-weight:800;font-family:var(--mono);border-radius:5px;border:1px solid ${activeInterval===iv?'var(--ac)':'var(--b1)'};background:${activeInterval===iv?'rgba(0,242,255,.12)':'var(--s1)'};color:${activeInterval===iv?'var(--ac)':'var(--tx3)'};cursor:pointer">${iv}</button>`).join('')}
+            </div>
             <span style="font-size:9px;font-weight:800;color:var(--ac);text-transform:uppercase;letter-spacing:.5px">📈 Mutual Fund NAV</span>
             <span style="flex:1"></span>
             <span style="font-size:11px;font-weight:800;color:var(--tx1)">₹${fmt(navVal, 3)}</span>
@@ -981,10 +994,6 @@ function renderTab(tab) {
                 <div style="font-size:8px;color:var(--tx3);font-weight:700;text-transform:uppercase">${lbl}</div>
                 <div style="font-size:11px;font-weight:800;color:${retColor(v)}">${fmtRet(v)}</div>
               </div>`).join('')}
-            <span style="width:1px;height:18px;background:rgba(255,255,255,.15);margin:0 4px"></span>
-            <div style="display:flex;gap:2px">
-              ${['D','W','M'].map(iv => `<button onclick="setNavInterval('${iv}')" style="padding:3px 9px;font-size:9px;font-weight:800;font-family:var(--mono);border-radius:5px;border:1px solid ${S.navInterval===iv?'var(--ac)':'var(--b1)'};background:${S.navInterval===iv?'rgba(0,242,255,.12)':'var(--s1)'};color:${S.navInterval===iv?'var(--ac)':'var(--tx3)'};cursor:pointer">${iv}</button>`).join('')}
-            </div>
           </div>
           <div style="position:relative;background:var(--s1);border-bottom:1px solid var(--b1)">
             <div id="chart-wrap" style="position:relative;width:100%;height:312px;touch-action:manipulation"><canvas id="cv-candle" style="display:block;width:100%;height:100%;touch-action:manipulation"></canvas></div>
@@ -1556,6 +1565,20 @@ function aggregateNavPoints(daily, interval){
   return Array.from(buckets.values()).sort((a,b) => a.d.localeCompare(b.d));
 }
 
+// Picks a sensible default interval per fund based on how much daily history
+// it actually has — funds range from <1yr (QSIF-style new launches) to 12+yrs
+// (older AMFI funds), so a single fixed default either over-aggregates short
+// histories or leaves long histories too dense to pan smoothly.
+// Thresholds: <= ~9 months of daily points stays daily; up to ~4 years goes
+// weekly; beyond that goes monthly.
+function resolveNavInterval(s){
+  const daily = s._navCache || [];
+  const n = daily.length;
+  if(n <= 200) return 'D';      // ~9 months of trading days
+  if(n <= 1100) return 'W';     // ~4-4.5 years
+  return 'M';
+}
+
 function getSlicedNavPoints(s, canvasWidth){
   if(!s._navCache) {
     const periods = (s.nav_history && s.nav_history.periods) || {};
@@ -1568,7 +1591,10 @@ function getSlicedNavPoints(s, canvasWidth){
   const daily = s._navCache;
   if (!daily.length) return [];
 
-  const interval = S.navInterval || 'D';
+  // S.navInterval is null until the user manually picks D/W/M for this stock
+  // (set by setNavInterval). Until then, auto-resolve per-fund and remember
+  // it as the active interval so the toolbar buttons highlight correctly.
+  const interval = S.navInterval || resolveNavInterval(s);
   if(!s._navAggCache) s._navAggCache = {};
   if(!s._navAggCache[interval]) s._navAggCache[interval] = aggregateNavPoints(daily, interval);
   const all = s._navAggCache[interval];
@@ -1603,7 +1629,6 @@ function drawNavLine(s){
     const ctx = cv.getContext('2d');
     ctx.scale(dpr,dpr);
     ctx.imageSmoothingEnabled = false;
-    cv.onclick = null; cv.ontouchend = null; // no per-point tooltip for NAV line yet
 
     const pts = getSlicedNavPoints(s, W2);
     if(!pts.length){
