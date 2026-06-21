@@ -1,6 +1,7 @@
 /* BharatMarkets - simple client-side password gate
    Include this script at the very top of <head>, before any other content loads.
-   Blocks casual visitors; NOT real security (page source is always viewable).
+   Blocks casual visitors; NOT real security (page source is always viewable —
+   anyone who views source can read the password directly).
 
    Uses localStorage with an expiry timestamp (not sessionStorage) because
    iOS Home Screen web apps run in a standalone WebKit instance that gets
@@ -9,18 +10,16 @@
 
    ============================================================
    TO SET / CHANGE THE PASSWORD:
-   1. Run: echo -n "yourpassword" | shasum -a 256
-   2. Copy the hex string (before the "  -")
-   3. Paste it as the value of CONFIG.PASSWORD_HASH below
+   Just edit CONFIG.PASSWORD below directly from GitHub's mobile
+   web editor (no terminal/shasum needed). The script hashes it
+   automatically at runtime before comparing.
    ============================================================ */
 
 var CONFIG = {
-  PASSWORD_HASH: "Xample"   // <-- SET PASSWORD HASH HERE
+  PASSWORD: "REPLACE_WITH_YOUR_PASSWORD"   // <-- SET PASSWORD HERE (plain text)
 };
 
 (function () {
-  var PASSWORD_HASH = CONFIG.PASSWORD_HASH;
-
   var STORAGE_KEY = "bm_auth_until";
   var UNLOCK_DAYS = 7; // how many days to stay unlocked after entering password
 
@@ -43,10 +42,11 @@ var CONFIG = {
 
   function showPrompt() {
     var overlay = document.createElement("div");
+    overlay.id = "bm-auth-overlay";
     overlay.style.cssText =
       "position:fixed;inset:0;background:#0b0e14;color:#e6e6e6;" +
       "display:flex;align-items:center;justify-content:center;" +
-      "font-family:-apple-system,sans-serif;z-index:999999;visibility:visible;";
+      "font-family:-apple-system,sans-serif;z-index:999999;";
 
     overlay.innerHTML =
       '<form id="bm-auth-form" style="text-align:center;">' +
@@ -57,9 +57,11 @@ var CONFIG = {
       '<div id="bm-auth-error" style="color:#ff6b6b;font-size:13px;margin-top:8px;height:16px;"></div>' +
       "</form>";
 
-    document.documentElement.style.visibility = "visible";
-    document.body.innerHTML = "";
+    // Overlay on top of the page WITHOUT touching existing body content,
+    // so the host page's own scripts/DOM are left intact.
     document.body.appendChild(overlay);
+    document.documentElement.style.visibility = "visible";
+    document.body.style.overflow = "hidden"; // prevent scrolling page behind overlay
 
     var input = document.getElementById("bm-auth-input");
     var errorEl = document.getElementById("bm-auth-error");
@@ -68,10 +70,12 @@ var CONFIG = {
     document.getElementById("bm-auth-form").addEventListener("submit", async function (e) {
       e.preventDefault();
       var entered = await sha256(input.value);
-      if (entered === PASSWORD_HASH) {
+      var expected = await sha256(CONFIG.PASSWORD);
+      if (entered === expected) {
         var until = Date.now() + UNLOCK_DAYS * 24 * 60 * 60 * 1000;
         localStorage.setItem(STORAGE_KEY, String(until));
-        location.reload();
+        overlay.remove();
+        document.body.style.overflow = "";
       } else {
         errorEl.textContent = "Incorrect password";
         input.value = "";
