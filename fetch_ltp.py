@@ -291,8 +291,12 @@ def fetch_sgb_quotes(sgb_syms, sym_to_entry, prev_quotes):
             ltp = fetch_sgb_ltp(session, sym)
             prev_q = prev_quotes.get(sym, {})
             prev_ltp = prev_q.get('ltp')
-            change = round(ltp - prev_ltp, 2) if prev_ltp else None
-            change_pct = round((ltp - prev_ltp) / prev_ltp * 100, 3) if prev_ltp else None
+            if prev_ltp is not None:
+                change = round(ltp - prev_ltp, 2)
+                change_pct = round((ltp - prev_ltp) / prev_ltp * 100, 3) if prev_ltp else 0.0
+            else:
+                change = None
+                change_pct = None
             quotes[sym] = {
                 "ticker": sym,
                 "name": entry.get("name", sym),
@@ -388,12 +392,11 @@ def main():
     try:
         prev_data = json.loads(Path(LTP_FILE).read_text())
         prev_quotes = prev_data.get('quotes', {})
-    except Exception:
-        pass
+        if not prev_quotes:
+            print("⚠️  Previous ltp.json had no quotes — SGB changes will be null this run")
+    except Exception as e:
+        print(f"⚠️  Could not load previous ltp.json ({e}) — SGB changes will be null this run")
 
-    # Purge old data
-    Path(LTP_FILE).write_text("")
-    
     symbols, symbols_data = load_symbols()
     start_time = now_utc()
     
