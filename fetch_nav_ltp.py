@@ -415,32 +415,37 @@ def parse_nav_table(html, base_url=QSIF_NAV_URL):
     else:
         qsif_logger.warning("  ⚠ Zero rows parsed from any table on this page")
 
-    # Look for a real <a href> pagination link (text '2', 'Next', or rel=next).
-    # ASP.NET pagers commonly render as <a href="javascript:__doPostBack(eventTarget,'')">
-    # with no real URL. In that case, extract the eventTarget string so the
-    # caller can replicate it as a real POST (see fetch_qsif_historical_nav).
+    # Look for a 'Next' pagination control specifically — NOT a numbered
+    # page link like '2', since that's a fixed "go to page 2" button, not
+    # a relative "next page" control. Using '2' caused the pager to cycle
+    # between two ASP.NET ViewState states instead of advancing forward
+    # (confirmed via live log: pages 3 and 5 returned identical duplicate
+    # rows to page 1's neighbors). 'Next' style text/symbols are far more
+    # likely to mean "go forward from wherever I currently am".
     next_url = None
     next_event_target = None
     candidates = soup.find_all('a', href=True)
+    next_texts = ('next', '»', '>', 'next page', 'next >')
     for a in candidates:
         text = a.get_text(strip=True).lower()
         href = a['href'].strip()
-        if text in ('2', 'next') or 'next' in (a.get('rel') or []):
+        if text in next_texts or 'next' in (a.get('rel') or []):
             if href.lower().startswith('javascript:'):
                 m = re.search(r"__doPostBack\('([^']+)'\s*,\s*'([^']*)'\)", href)
                 if m:
                     next_event_target = m.group(1)
-                    qsif_logger.info(f"  Pagination is __doPostBack with eventTarget='{next_event_target}'")
+                    qsif_logger.info(f"  'Next' pagination is __doPostBack with eventTarget='{next_event_target}'")
                 else:
-                    qsif_logger.info(f"  Pagination link found but is JS-only postback (could not parse eventTarget): {href[:120]}")
+                    qsif_logger.info(f"  'Next' link found but is JS-only postback (could not parse eventTarget): {href[:120]}")
             else:
                 from urllib.parse import urljoin
                 next_url = urljoin(base_url, href)
-                qsif_logger.info(f"  Real pagination href found: {next_url}")
+                qsif_logger.info(f"  Real 'Next' href found: {next_url}")
             break
 
     if next_url is None and next_event_target is None:
-        qsif_logger.info("  No pagination link (real or postback) found on this page")
+        qsif_logger.info("  No 'Next' pagination link (real or postback) found on this page — "
+                          "may be on the last page, or site uses a different 'Next' label/symbol")
 
     # Hidden ASP.NET form fields needed to replicate a postback via POST
     hidden_fields = {}
@@ -546,6 +551,25 @@ def run_qsif_nav():
         qsif_logger.warning("  ⚠ No rows parsed from historical_nav page — check page structure")
         return {}
 
+    # Dedup by (scheme_name, date) — pagination can occasionally return the
+    # same page twice (e.g. if a 'next' link cycles back to an earlier
+    # state); without this, a duplicate row would compare a date against
+    # itself and silently produce a false change of 0.0.
+    seen = set()
+    deduped_rows = []
+    for r in all_rows:
+        key = (r['scheme_name'], r['date_str'])
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped_rows.append(r)
+    if len(deduped_rows) < len(all_rows):
+        qsif_logger.warning(
+            f"  ⚠ Removed {len(all_rows) - len(deduped_rows)} duplicate row(s) "
+            f"(same scheme+date seen more than once — pagination may have cycled)"
+        )
+    all_rows = deduped_rows
+
     distinct_names = sorted(set(r['scheme_name'] for r in all_rows))
     qsif_logger.info(f"  Distinct scheme names found on page ({len(distinct_names)}): {distinct_names}")
 
@@ -573,15 +597,22 @@ def run_qsif_nav():
         change_pct = None
         if len(dated) >= 2:
             prev_date, prev_row = dated[1]
-            curr_nav = curr_row['nav']
-            prev_nav = prev_row['nav']
-            if prev_nav:
-                change = round(curr_nav - prev_nav, 4)
-                change_pct = round((curr_nav - prev_nav) / prev_nav * 100, 4)
-            qsif_logger.info(
-                f"  {isin}: {curr_date.date()} NAV {curr_nav} vs {prev_date.date()} NAV {prev_nav} "
-                f"-> change {change}"
-            )
+            if prev_date == curr_date:
+                qsif_logger.warning(
+                    f"  ⚠ {isin}: two most recent rows share the same date ({curr_date.date()}) "
+                    f"after dedup — pagination likely did not reach an earlier date. "
+                    f"Leaving change as None rather than reporting a false 0.0."
+                )
+            else:
+                curr_nav = curr_row['nav']
+                prev_nav = prev_row['nav']
+                if prev_nav:
+                    change = round(curr_nav - prev_nav, 4)
+                    change_pct = round((curr_nav - prev_nav) / prev_nav * 100, 4)
+                qsif_logger.info(
+                    f"  {isin}: {curr_date.date()} NAV {curr_nav} vs {prev_date.date()} NAV {prev_nav} "
+                    f"-> change {change}"
+                )
         else:
             qsif_logger.warning(f"  ⚠ {isin}: only one dated row found, can't compute change")
 
