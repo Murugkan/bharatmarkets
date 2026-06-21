@@ -11,9 +11,14 @@ Part 1 — AMFI NAV:
   Output: data/mf_nav.json
 
 Part 2 — QSIF NAV:
-  Scrapes latest NAV from qsif.com/NAV/latestnav for entries in
-  unified-symbols.json where instrument_type == "SIF". Matches by scheme_name
-  keyword (case-insensitive substring). Handles ASP.NET pagination (2 pages).
+  Scrapes daily NAV history from qsif.com/nav/historical_nav (a single page
+  that lists ALL QSIF schemes' NAV history, paginated, no search/postback
+  needed — a plain GET returns the full table). Matches rows by scheme_name
+  keyword (case-insensitive substring) for entries in unified-symbols.json
+  where instrument_type == "SIF". Change/changePct are computed directly
+  from the two most recent rows found on the page itself (not by diffing
+  against the previous day's output file), so this no longer depends on
+  nav_ltp.json from a prior run.
   Output: data/qsif_nav.json
 """
 
@@ -23,6 +28,7 @@ import re
 import requests
 import subprocess
 import time
+from bs4 import BeautifulSoup
 from pathlib import Path
 from datetime import datetime, UTC, timedelta
 
@@ -35,11 +41,13 @@ LOG_FILE = DATA_DIR / 'logs/fetch_nav_ltp.log'
 
 AMFI_URL = 'https://www.amfiindia.com/spages/NAVAll.txt'
 
-QSIF_NAV_URL = 'https://www.qsif.com/All-Strategies/funds'
+QSIF_NAV_URL = 'https://www.qsif.com/nav/historical_nav'
 
-# Fund detail page URLs keyed by ISIN — add new entries as more QSIF funds are held
-QSIF_FUND_URLS = {
-    'INF966L30027': 'https://www.qsif.com/equity/qsif-logn-short-fund',
+# Scheme name keywords to match against the historical NAV table's
+# "Scheme Name" column, keyed by ISIN — add new entries as more QSIF
+# funds are held. Matching is case-insensitive substring match.
+QSIF_SCHEME_KEYWORDS = {
+    'INF966L30027': 'Equity Long-Short Fund',
 }
 
 SCRAPE_HEADERS = {
@@ -346,112 +354,166 @@ def run_amfi_nav():
 # Part 3 — QSIF NAV (qsif.com)
 # ===========================================================================
 
-def get_portfolio_qsif_entries():
-    """Collect symbol + scheme_name keyword for QSIF/SIF entries.
+def parse_nav_table(html):
+    """Parse a historical_nav page's table into rows.
 
-    Matches on name containing 'qsif' (case-insensitive) since these schemes
-    are filed as instrument_type == 'MUTUAL FUND' in unified-symbols.json but
-    are SIF schemes not present in AMFI NAVAll.txt.
+    Expected columns (per the live site): NAV Date | Scheme Name | NAV(₹)
+    Returns list of dicts: {date_str, scheme_name, nav}
+    Tries to be resilient to extra whitespace/columns by matching on
+    header text rather than assuming a fixed column index.
     """
-    us = load_json(SYMBOLS_FILE)
-    entries = []
-    for entry in us.get('symbols', []):
-        name = (entry.get('name') or entry.get('scheme_name') or '').strip()
-        if 'qsif' not in name.lower():
-            continue
-        symbol = (entry.get('isin') or entry.get('symbol') or entry.get('ticker') or '').strip().upper()
-        if symbol and name:
-            entries.append({'symbol': symbol, 'scheme_name': name})
-    return entries
-
-
-def fetch_and_parse_qsif_homepage(session):
-    """Scrape NAV from individual QSIF fund detail pages (server-rendered).
-
-    Fund detail pages contain NAV in the pattern:
-      **10.20** ... As of\n DD-Mon-YYYY
-
-    Falls back to /All-Strategies/funds listing page if no detail URL is known.
-    Returns list of dicts: {isin, scheme_name, nav, date}
-    """
+    soup = BeautifulSoup(html, 'html.parser')
     rows = []
-    for isin, url in QSIF_FUND_URLS.items():
+
+    tables = soup.find_all('table')
+    if not tables:
+        qsif_logger.warning("  ⚠ No <table> found on historical_nav page")
+        return rows
+
+    for table in tables:
+        header_cells = table.find('tr')
+        if not header_cells:
+            continue
+        headers = [th.get_text(strip=True).lower() for th in header_cells.find_all(['th', 'td'])]
+        if not any('nav date' in h for h in headers) and not any('scheme' in h for h in headers):
+            continue  # not the table we want (could be a layout table)
+
+        # Locate column indices by header text
         try:
-            resp = session.get(url, headers=SCRAPE_HEADERS, timeout=15)
-            resp.raise_for_status()
-            html = resp.text
+            date_idx = next(i for i, h in enumerate(headers) if 'date' in h)
+            name_idx = next(i for i, h in enumerate(headers) if 'scheme' in h)
+            nav_idx = next(i for i, h in enumerate(headers) if 'nav' in h and 'date' not in h)
+        except StopIteration:
+            qsif_logger.warning(f"  ⚠ Could not identify columns from headers: {headers}")
+            continue
 
-            # HTML structure around NAV:
-            # ...>10.33</..><span class="paddl"><img green_icon /></span></div>
-            # <span>As of\n    15-Jun-2026</span>
-            # Strategy: find "As of" block, grab the date, then search backwards for the NAV number
-            as_of_match = re.search(
-                r'As\s+of\s*[\s\S]{0,20}?([\d]{1,2}-[A-Za-z]{3}-\d{4})',
-                html
-            )
-            # NAV: a decimal number appearing just before the green_icon img tag
-            # Actual HTML: <span><b>\n  10.33</b></span><span class="paddl"><img green_icon/>
-            nav_val_match = re.search(
-                r'<b>\s*([\d]{1,3}\.[\d]+)\s*</b>\s*</span>\s*<span[^>]*paddl',
-                html
-            )
-            if not as_of_match or not nav_val_match:
-                # Log 300 chars around green_icon for diagnosis
-                pos = html.find('green_icon')
-                qsif_logger.warning(f"  ⚠ {isin}: parse failed | context={html[max(0,pos-200):pos+100].replace(chr(10),' ')}")
+        for tr in table.find_all('tr')[1:]:  # skip header row
+            cells = tr.find_all(['td', 'th'])
+            if len(cells) <= max(date_idx, name_idx, nav_idx):
                 continue
-
-            nav = float(nav_val_match.group(1))
-            date_str = as_of_match.group(1).strip()
-
-            # Scheme name from <h2>
-            name_match = re.search(r'<h2[^>]*>\s*(qsif[^<]+?)\s*</h2>', html, re.IGNORECASE)
-            scheme_name = re.sub(r'\s+', ' ', name_match.group(1)).strip() if name_match else isin
-
-            rows.append({'isin': isin, 'scheme_name': scheme_name, 'nav': nav, 'date': date_str})
-            qsif_logger.info(f"  Fetched {scheme_name}: NAV {nav} as of {date_str}")
-
-        except Exception as e:
-            qsif_logger.warning(f"  ⚠ {isin}: fetch failed: {e}")
-        time.sleep(1)
+            date_str = cells[date_idx].get_text(strip=True)
+            scheme_name = cells[name_idx].get_text(strip=True)
+            nav_str = cells[nav_idx].get_text(strip=True).replace(',', '')
+            try:
+                nav = float(nav_str)
+            except ValueError:
+                continue
+            if not date_str or not scheme_name:
+                continue
+            rows.append({'date_str': date_str, 'scheme_name': scheme_name, 'nav': nav})
 
     return rows
 
 
-def run_qsif_nav():
-    entries = get_portfolio_qsif_entries()
-    qsif_logger.info(f"Portfolio SIF entries to match: {len(entries)}")
+def fetch_qsif_historical_nav(session, max_pages=3):
+    """Fetch and parse the historical_nav page across pagination.
 
-    if not entries:
-        qsif_logger.warning("No SIF entries found in unified-symbols.json")
+    The page returns the full table for ALL QSIF schemes on a plain GET
+    (confirmed: no search/postback required). Pagination links are followed
+    via '?page=N' query param — adjust PAGE_PARAM below if the live site
+    uses a different parameter name.
+    """
+    PAGE_PARAM = 'page'
+    all_rows = []
+
+    for page_num in range(1, max_pages + 1):
+        url = QSIF_NAV_URL if page_num == 1 else f"{QSIF_NAV_URL}?{PAGE_PARAM}={page_num}"
+        try:
+            resp = session.get(url, headers=SCRAPE_HEADERS, timeout=15)
+            resp.raise_for_status()
+            page_rows = parse_nav_table(resp.text)
+            if not page_rows:
+                qsif_logger.info(f"  Page {page_num}: no rows parsed, stopping pagination")
+                break
+            all_rows.extend(page_rows)
+            qsif_logger.info(f"  Page {page_num}: {len(page_rows)} rows")
+        except Exception as e:
+            qsif_logger.warning(f"  ⚠ Page {page_num} fetch failed: {e}")
+            break
+        time.sleep(1)
+
+    qsif_logger.info(f"  ✓ Total rows fetched across pagination: {len(all_rows)}")
+    return all_rows
+
+
+def parse_qsif_date(date_str):
+    """Parse 'DD-Mon-YYYY' (e.g. '19-Jun-2026') into a sortable datetime."""
+    try:
+        return datetime.strptime(date_str.strip(), '%d-%b-%Y')
+    except ValueError:
+        return None
+
+
+def run_qsif_nav():
+    """Fetch QSIF NAV history and compute LTP + 1D change per held ISIN.
+
+    Unlike before, change/changePct are computed from the two most recent
+    dated rows found directly on the historical_nav page — not by diffing
+    against nav_ltp.json from a previous run. This removes the dependency
+    on prior output being correctly committed/checked-out, which was the
+    suspected cause of QSIF's change always showing 0.0.
+    """
+    if not QSIF_SCHEME_KEYWORDS:
+        qsif_logger.warning("No QSIF_SCHEME_KEYWORDS configured")
         return {}
 
     session = requests.Session()
-    all_rows = fetch_and_parse_qsif_homepage(session)
-    qsif_logger.info(f"  Fetched {len(all_rows)} QSIF fund NAVs")
-
-    rows_by_isin = {r['isin']: r for r in all_rows}
+    all_rows = fetch_qsif_historical_nav(session)
+    if not all_rows:
+        qsif_logger.warning("  ⚠ No rows parsed from historical_nav page — check page structure")
+        return {}
 
     result = {}
-    for entry in entries:
-        symbol = entry['symbol']
-        row = rows_by_isin.get(symbol)
-        if not row:
-            qsif_logger.warning(f"  ⚠ {symbol}: no data fetched (add URL to QSIF_FUND_URLS)")
+    for isin, keyword in QSIF_SCHEME_KEYWORDS.items():
+        matched = [r for r in all_rows if keyword.lower() in r['scheme_name'].lower()]
+        if not matched:
+            qsif_logger.warning(f"  ⚠ {isin}: no rows matched keyword '{keyword}'")
             continue
-        result[symbol] = {
-            'ltp': row['nav'],
-            'date': row['date'],
-            'scheme_name': row['scheme_name'],
+
+        # Sort by parsed date, most recent first; drop unparseable dates
+        dated = []
+        for r in matched:
+            d = parse_qsif_date(r['date_str'])
+            if d:
+                dated.append((d, r))
+        dated.sort(key=lambda x: x[0], reverse=True)
+
+        if not dated:
+            qsif_logger.warning(f"  ⚠ {isin}: matched rows but none had parseable dates")
+            continue
+
+        curr_date, curr_row = dated[0]
+        change = None
+        change_pct = None
+        if len(dated) >= 2:
+            prev_date, prev_row = dated[1]
+            curr_nav = curr_row['nav']
+            prev_nav = prev_row['nav']
+            if prev_nav:
+                change = round(curr_nav - prev_nav, 4)
+                change_pct = round((curr_nav - prev_nav) / prev_nav * 100, 4)
+            qsif_logger.info(
+                f"  {isin}: {curr_date.date()} NAV {curr_nav} vs {prev_date.date()} NAV {prev_nav} "
+                f"-> change {change}"
+            )
+        else:
+            qsif_logger.warning(f"  ⚠ {isin}: only one dated row found, can't compute change")
+
+        result[isin] = {
+            'ltp': curr_row['nav'],
+            'date': curr_row['date_str'],
+            'scheme_name': curr_row['scheme_name'],
             'source': 'qsif.com',
+            'change': change,
+            'changePct': change_pct,
         }
-        qsif_logger.info(f"  ✓ {symbol}: LTP {row['nav']} ({row['date']})")
+        qsif_logger.info(f"  ✓ {isin}: LTP {curr_row['nav']} ({curr_row['date_str']})")
 
-    missing = {e['symbol'] for e in entries} - set(result.keys())
+    missing = set(QSIF_SCHEME_KEYWORDS.keys()) - set(result.keys())
     if missing:
-        qsif_logger.warning(f"  ⚠ {len(missing)} symbol(s) not matched: {sorted(missing)}")
+        qsif_logger.warning(f"  ⚠ {len(missing)} ISIN(s) not matched: {sorted(missing)}")
 
-    qsif_logger.info(f"  ✓ Matched {len(result)}/{len(entries)} SIF entries")
+    qsif_logger.info(f"  ✓ Matched {len(result)}/{len(QSIF_SCHEME_KEYWORDS)} QSIF entries")
     return result
 
 
@@ -462,35 +524,17 @@ def run_qsif_nav():
 def main():
     merged = {}
 
-    # Load existing nav_ltp.json to get previous QSIF prices for 1D change computation
-    prev_nav_ltp = {}
-    if NAV_LTP_OUTPUT_FILE.exists():
-        try:
-            with open(NAV_LTP_OUTPUT_FILE, 'r', encoding='utf-8') as f:
-                prev_nav_ltp = json.load(f)
-        except Exception as e:
-            logger.warning(f"  ⚠ Could not load previous nav_ltp.json: {e}")
-
     try:
         amfi = run_amfi_nav()
         merged.update(amfi)
     except Exception as e:
         logger.warning(f"  ⚠ AMFI NAV run failed: {e}")
 
-
-
     try:
         qsif = run_qsif_nav()
-        for symbol, entry in qsif.items():
-            prev = prev_nav_ltp.get(symbol, {})
-            prev_ltp = prev.get('ltp')
-            curr_ltp = entry.get('ltp')
-            if prev_ltp and curr_ltp:
-                entry['change'] = round(curr_ltp - prev_ltp, 4)
-                entry['changePct'] = round((curr_ltp - prev_ltp) / prev_ltp * 100, 4)
-            else:
-                entry['change'] = None
-                entry['changePct'] = None
+        # change/changePct are already computed inside run_qsif_nav() from
+        # the historical NAV table itself — no need to diff against a
+        # previously-saved nav_ltp.json here.
         merged.update(qsif)
     except Exception as e:
         qsif_logger.warning(f"  ⚠ QSIF NAV run failed: {e}")
