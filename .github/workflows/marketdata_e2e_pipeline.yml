@@ -338,6 +338,8 @@ jobs:
 
   # ==========================================================================
   # JOB 5: NAV/LTP for MF, SGB, QSIF — fetch_nav_ltp.py
+  # Commit & push is handled INSIDE fetch_nav_ltp.py (git_commit_and_push()).
+  # No separate git step here — avoids double-commit/double-push.
   # ==========================================================================
   fetch-nav-ltp:
     runs-on: ubuntu-latest
@@ -353,7 +355,12 @@ jobs:
       - name: Install dependencies
         run: pip install requests beautifulsoup4 -q
 
-      - name: Run fetch_nav_ltp.py
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Run fetch_nav_ltp.py (commits internally)
         run: python fetch_nav_ltp.py
 
       - name: Verify output file
@@ -364,38 +371,6 @@ jobs:
           else
             echo "✗ nav_ltp.json NOT FOUND"
           fi
-
-      - name: Commit & Push (retry on concurrent updates)
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
-          git add data/nav_ltp.json data/logs/fetch_nav_ltp.log 2>/dev/null || true
-
-          if git diff --quiet --cached; then
-            echo "No changes to commit"
-            exit 0
-          fi
-
-          git commit -m "[NAV LTP] Fetch MF/SGB/QSIF: $(date +'%Y-%m-%d %H:%M:%S') [skip ci]"
-
-          max_attempts=5
-          attempt=1
-          until git push origin main; do
-            if [ $attempt -ge $max_attempts ]; then
-              echo "::error::Push failed after $max_attempts attempts"
-              exit 1
-            fi
-            echo "Push rejected (attempt $attempt/$max_attempts) — pulling and retrying..."
-            attempt=$((attempt + 1))
-            sleep $((RANDOM % 5 + 1))
-            git fetch origin main
-            git stash --include-untracked
-            git rebase origin/main
-            git stash pop || true
-          done
-
-          echo "Push succeeded on attempt $attempt"
 
   # ==========================================================================
   # JOB 6: Bucket market_data_raw.json -> market_data.json (final output)
