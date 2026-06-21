@@ -920,7 +920,17 @@
             } else if (s.name === 'ltp.json') {
                 jsonTime = metadata.ltp_live_updated_at || '—';
             } else if (s.name === 'sector_indices.json') {
-                jsonTime = metadata.ltp_updated_at || '—';
+                // UI Delta Load: show the most recent of ltp.json's and nav.json's
+                // live timestamps (whichever source updated last), not the DB's
+                // own merge timestamp — the color below compares DB against this
+                // same max, so the displayed value should match what's being checked.
+                var deltaLiveTimes = [metadata.ltp_live_updated_at, metadata.nav_live_generated_at]
+                    .filter(Boolean)
+                    .map(function(t) { return new Date(t).getTime(); })
+                    .filter(function(t) { return !isNaN(t); });
+                jsonTime = deltaLiveTimes.length
+                    ? new Date(Math.max.apply(null, deltaLiveTimes)).toISOString()
+                    : '—';
             } else if (s.name === 'unified-symbols.json') {
                 jsonTime = metadata.symbols_updated_at || '—';
             }
@@ -945,15 +955,10 @@
             }
             // For UI Delta Load (sector_indices.json) Fetch time, color green/red
             // based on whether the LTP merge timestamp in DB (ltp_updated_at)
-            // matches the most recent of ltp.json's and nav.json's live timestamps
-            // on GitHub — whichever of the two was last updated.
+            // is at or after the max-live time shown above (whichever of
+            // ltp.json/nav.json updated last on GitHub).
             if (s.name === 'sector_indices.json') {
-                var liveTimes = [metadata.ltp_live_updated_at, metadata.nav_live_generated_at]
-                    .filter(Boolean)
-                    .map(function(t) { return new Date(t).getTime(); })
-                    .filter(function(t) { return !isNaN(t); });
-                var maxLiveTime = liveTimes.length ? Math.max.apply(null, liveTimes) : null;
-
+                var maxLiveTime = deltaLiveTimes.length ? Math.max.apply(null, deltaLiveTimes) : null;
                 if (metadata.ltp_updated_at && maxLiveTime !== null) {
                     var dbTime = new Date(metadata.ltp_updated_at).getTime();
                     var deltaMatches = !isNaN(dbTime) && dbTime >= maxLiveTime;
@@ -1015,9 +1020,21 @@
                 displayCount = `${metadata.ltp_count ?? '—'} / ${metadata.sector_indices_count ?? '—'}`;
             }
 
-            var loadRow = (index === 0 || s.name === 'ltp.json') ? '' : `<div class="last-load-cell"><b>Load:</b> ${lastLoad}</div>`;
+            var loadRow = (index === 0 || s.name === 'ltp.json') ? '' : `<div class="last-load-cell"><b>${s.name === 'sector_indices.json' ? 'Load (DB merge)' : 'Load'}:</b> ${lastLoad}</div>`;
 
-            rowParts[s.name] = `<div class="source-row" data-source="${s.name}">
+            if (s.name === 'sector_indices.json') {
+                rowParts[s.name] = `<div class="source-row" data-source="${s.name}">
+                    ${actionBtn}
+                    <div class="src-info">
+                        <div class="src-count count-cell">Count: ${displayCount}</div>
+                    </div>
+                    <div class="src-times">
+                        <div class="time-cell"><b>Fetch (max of ltp.json/nav.json):</b> <span style="${fetchColorStyle}">${istTime}</span></div>
+                        ${loadRow}
+                    </div>
+                </div>`;
+            } else {
+                rowParts[s.name] = `<div class="source-row" data-source="${s.name}">
                 ${actionBtn}
                 <div class="src-info">
                     <div class="src-count count-cell">Count: ${displayCount}</div>
@@ -1027,6 +1044,7 @@
                     ${loadRow}
                 </div>
             </div>`;
+            }
         });
 
         // "Web E2E Load" — triggers .github/workflows/e2e-pipeline.yml
