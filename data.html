@@ -344,6 +344,11 @@
             grid-template-columns: 1fr 1fr;
             gap: 6px;
         }
+        .source-row-group .row-stack {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
         .source-row-group .source-row {
             flex-direction: column;
             align-items: stretch;
@@ -617,7 +622,6 @@
     const DATA_SOURCES = [
         { name: 'unified-symbols.json', path: GITHUB_CONFIG.PATHS.symbols },
         { name: 'ltp.json', path: GITHUB_CONFIG.PATHS.ltp },
-        { name: 'nav.json', path: GITHUB_CONFIG.PATHS.nav },
         { name: 'market_data.json', path: GITHUB_CONFIG.PATHS.market_data },
         { name: 'sector_indices.json', path: GITHUB_CONFIG.PATHS.sector_indices }
     ];
@@ -832,8 +836,8 @@
                     })
                     .catch(() => { /* leave DB-only render in place */ });
 
-                // Async: fetch nav.json's live _metadata (Web Daily NAV row's
-                // Fetch time/count should reflect the file on GitHub, not the DB snapshot).
+                // Async: fetch nav.json's live _metadata (Web Daily NAV button's
+                // own Fetch time/count — separate file, separate values from ltp.json).
                 ghFetch('data/nav.json')
                     .then(r => r.json())
                     .then(json => {
@@ -903,8 +907,6 @@
                 count = metadata.market_data_count || '—';
             } else if (s.name === 'ltp.json') {
                 count = metadata.ltp_count || '—';
-            } else if (s.name === 'nav.json') {
-                count = metadata.nav_live_count ?? metadata.nav_count ?? '—';
             } else if (s.name === 'unified-symbols.json') {
                 count = metadata.symbols_count || '—';
             } else if (s.name === 'sector_indices.json') {
@@ -917,8 +919,6 @@
                 jsonTime = metadata.market_data_generated_at || '—';
             } else if (s.name === 'ltp.json') {
                 jsonTime = metadata.ltp_live_updated_at || '—';
-            } else if (s.name === 'nav.json') {
-                jsonTime = metadata.nav_live_generated_at || '—';
             } else if (s.name === 'sector_indices.json') {
                 jsonTime = metadata.ltp_updated_at || '—';
             } else if (s.name === 'unified-symbols.json') {
@@ -966,9 +966,6 @@
             } else if (s.name === 'ltp.json') {
                 actionBtn = `<button class="src-btn" onclick="triggerLTPWorkflowOnly()" style="background:linear-gradient(135deg, #0a7d8c 0%, #086b8c 100%); color:#cdf5ff; font-weight:800;">⚡ Web Delta Fetch</button>`;
                 lastLoadKey = 'lastLoad_ltp';
-            } else if (s.name === 'nav.json') {
-                actionBtn = `<button class="src-btn" onclick="triggerNAVWorkflowOnly()" style="background:linear-gradient(135deg, #0a7d8c 0%, #086b8c 100%); color:#cdf5ff; font-weight:800;">📊 Web Daily NAV</button>`;
-                lastLoadKey = 'lastLoad_nav';
             } else if (s.name === 'market_data.json') {
                 actionBtn = `<button class="src-btn${runningButtons['loadJsonBtn'] ? ' is-running' : ''}" id="loadJsonBtn" onclick="loadAllData()" style="background:linear-gradient(135deg, #0a7d8c 0%, #086b8c 100%); color:#cdf5ff; font-weight:800;">🚀 UI Full Load</button>`;
                 lastLoadKey = 'lastLoad_full';
@@ -1047,6 +1044,26 @@
             </div>
         </div>`;
 
+        // "Web Daily NAV" — triggers .github/workflows/fetch-nav.yml, writes data/nav.json.
+        // Count/Fetch time = nav.json's own live _metadata (separate file from ltp.json).
+        var navFetchTime = '—';
+        if (metadata.nav_live_generated_at) {
+            try {
+                navFetchTime = new Date(metadata.nav_live_generated_at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+            } catch(e) {
+                navFetchTime = metadata.nav_live_generated_at;
+            }
+        }
+        rowParts['nav.json'] = `<div class="source-row" data-source="nav.json">
+            <button class="src-btn" onclick="triggerNAVWorkflowOnly()" style="background:linear-gradient(135deg, #0a7d8c 0%, #086b8c 100%); color:#cdf5ff; font-weight:800;">📊 Web Daily NAV</button>
+            <div class="src-info">
+                <div class="src-count count-cell">Count: ${metadata.nav_live_count ?? '—'}</div>
+            </div>
+            <div class="src-times">
+                <div class="time-cell"><b>Fetch:</b> ${navFetchTime}</div>
+            </div>
+        </div>`;
+
         // E2E status: green if DB's market_data snapshot matches the live pipeline output
         var e2eIsRed;
         if (metadata.market_data_generated_at && metadata.market_data_live_generated_at) {
@@ -1087,9 +1104,9 @@
             <button class="src-btn" onclick="forcePageReset()" style="background:#444; color:#ccc; font-weight:800;">⛔ Reset</button>
         </div>`;
 
-        // Order: Refresh, (Delta Load + Fetch), (Full Load + ETL dummy), Wizard
+        // Order: Refresh, (Delta Load + Fetch+NAV), (Full Load + ETL dummy), Wizard
         var rows = rowParts['refresh-all']
-            + `<div class="source-row-group">${rowParts['sector_indices.json']}${rowParts['ltp.json']}</div>`
+            + `<div class="source-row-group">${rowParts['sector_indices.json']}<div class="row-stack">${rowParts['ltp.json']}${rowParts['nav.json']}</div></div>`
             + `<div class="source-row-group">${rowParts['market_data.json']}${rowParts['e2e-pipeline']}</div>`
             + rowParts['unified-symbols.json'];
 
@@ -2920,13 +2937,13 @@ function saveGuidanceToGitHub(ticker, jsonText, pat, date) {
                     .catch(e => logWarning('unified-symbols count skipped', e));
             })
             .then(() => {
-                // Fetch nav_ltp and merge NAV prices into DB
+                // Fetch nav.json and merge NAV prices into DB
                 return new Promise((res) => {
-                    logFetch('nav_ltp.json');
-                    ghFetch('data/nav_ltp.json')
+                    logFetch('nav.json');
+                    ghFetch('data/nav.json')
                         .then(r => r.json())
-                        .then(nav => mergeLTPIntoDB(nav, null, true))
-                        .catch(e => { logWarning('nav_ltp skipped', e); })
+                        .then(nav => mergeLTPIntoDB(flattenNavJson(nav), null, true))
+                        .catch(e => { logWarning('nav skipped', e); })
                         .finally(() => res());
                 });
             })
@@ -3066,6 +3083,31 @@ function saveGuidanceToGitHub(ticker, jsonText, pat, date) {
         });
     }
     
+    // nav.json (AMFI + qsif.com) nests today's values under `latest: {date, ltp,
+    // change, changePct}` per ISIN, with a `periods` history map alongside.
+    // mergeLTPIntoDB expects a flat quote object (scheme_name/source/ltp/date/
+    // change/changePct directly on each entry) — same shape nav_ltp.json used.
+    // This adapts the new schema to that flat shape without touching the merge
+    // logic itself, which is also used by the equity LTP path.
+    function flattenNavJson(navJson) {
+        const flat = {};
+        Object.keys(navJson).forEach(function(isin) {
+            if (isin === '_metadata') return;
+            const entry = navJson[isin];
+            const latest = entry && entry.latest;
+            if (!latest) return;
+            flat[isin] = {
+                scheme_name: entry.scheme_name,
+                source: entry.source,
+                ltp: latest.ltp,
+                date: latest.date,
+                change: latest.change,
+                changePct: latest.changePct
+            };
+        });
+        return flat;
+    }
+
     function mergeLTPIntoDB(quoteDataOrQuotes, ltpUpdatedTime, isNav) {
         return new Promise((resolve, reject) => {
             // Handle both old format (just quotes object) and new format (full JSON with metadata)
@@ -3517,12 +3559,12 @@ function saveGuidanceToGitHub(ticker, jsonText, pat, date) {
                         logSuccess('LTP updated', `${updatedCount} stocks`);
                         db.close();
 
-                        // Fetch nav_ltp first, then sector_indices, then re-render
-                        logFetch('nav_ltp.json');
-                        ghFetch('data/nav_ltp.json')
+                        // Fetch nav.json first, then sector_indices, then re-render
+                        logFetch('nav.json');
+                        ghFetch('data/nav.json')
                             .then(r => r.json())
-                            .then(nav => mergeLTPIntoDB(nav, null, true))
-                            .catch(e => { logWarning('nav_ltp skipped', e); })
+                            .then(nav => mergeLTPIntoDB(flattenNavJson(nav), null, true))
+                            .catch(e => { logWarning('nav skipped', e); })
                             .finally(() => {
                                 ghFetch('data/sector_indices.json')
                                     .then(r => r.json())
@@ -3591,11 +3633,11 @@ function saveGuidanceToGitHub(ticker, jsonText, pat, date) {
                 return mergeLTPIntoDB(json);
             })
             .then(() => new Promise((res) => {
-                logFetch('nav_ltp.json');
-                ghFetch('data/nav_ltp.json')
+                logFetch('nav.json');
+                ghFetch('data/nav.json')
                     .then(r => r.json())
-                    .then(nav => mergeLTPIntoDB(nav, null, true))
-                    .catch(e => { logWarning('nav_ltp skipped', e); })
+                    .then(nav => mergeLTPIntoDB(flattenNavJson(nav), null, true))
+                    .catch(e => { logWarning('nav skipped', e); })
                     .finally(() => res());
             }))
             .then(() => new Promise((res) => {
