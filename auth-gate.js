@@ -16,12 +16,12 @@
    ============================================================ */
 
 var CONFIG = {
-  PASSWORD: "Xample"   // <-- SET PASSWORD HERE (plain text)
+  PASSWORD: "REPLACE_WITH_YOUR_PASSWORD"   // <-- SET PASSWORD HERE (plain text)
 };
 
 (function () {
   var STORAGE_KEY = "bm_auth_until";
-  var UNLOCK_DAYS = 1; // how many days to stay unlocked after entering password
+  var UNLOCK_DAYS = 7; // how many days to stay unlocked after entering password
 
   var unlockedUntil = parseInt(localStorage.getItem(STORAGE_KEY) || "0", 10);
 
@@ -45,7 +45,8 @@ var CONFIG = {
     overlay.id = "bm-auth-overlay";
     overlay.style.cssText =
       "position:fixed;inset:0;background:#0b0e14;color:#e6e6e6;" +
-      "display:flex;align-items:center;justify-content:center;" +
+      "display:flex;align-items:flex-start;justify-content:center;" +
+      "padding-top:25vh;" +
       "font-family:-apple-system,sans-serif;z-index:999999;";
 
     overlay.innerHTML =
@@ -53,7 +54,10 @@ var CONFIG = {
       '<div style="margin-bottom:12px;font-size:15px;">Enter password</div>' +
       '<input id="bm-auth-input" type="password" autocomplete="off" ' +
       'style="padding:10px 12px;font-size:16px;border-radius:6px;border:1px solid #444;' +
-      'background:#1a1e27;color:#fff;width:220px;text-align:center;" />' +
+      'background:#1a1e27;color:#fff;width:220px;text-align:center;display:block;margin:0 auto;" />' +
+      '<button id="bm-auth-submit" type="submit" ' +
+      'style="margin-top:12px;padding:10px 24px;font-size:15px;border-radius:6px;border:none;' +
+      'background:#2a6ef5;color:#fff;width:220px;">Unlock</button>' +
       '<div id="bm-auth-error" style="color:#ff6b6b;font-size:13px;margin-top:8px;height:16px;"></div>' +
       "</form>";
 
