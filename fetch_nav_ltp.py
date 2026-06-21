@@ -426,6 +426,12 @@ def parse_nav_table(html, base_url=QSIF_NAV_URL):
     # (confirmed via live log: pages 3 and 5 returned identical duplicate
     # rows to page 1's neighbors). 'Next' style text/symbols are far more
     # likely to mean "go forward from wherever I currently am".
+    #
+    # User independently confirmed via page inspection the exact control
+    # IDs: nav_sch$ctl01$ctl01 = page 2 (numbered link, do NOT use),
+    # nav_sch$ctl02$ctl01 = page 3 (numbered link, do NOT use),
+    # nav_sch$ctl02$ctl00 = Next (correct — this is what we want).
+    # This matches what was already being detected/used in prior runs.
     next_url = None
     next_event_target = None
     candidates = soup.find_all('a', href=True)
@@ -451,6 +457,7 @@ def parse_nav_table(html, base_url=QSIF_NAV_URL):
         qsif_logger.info("  No 'Next' pagination link (real or postback) found on this page — "
                           "may be on the last page, or site uses a different 'Next' label/symbol")
 
+
     # Hidden ASP.NET form fields needed to replicate a postback via POST
     hidden_fields = {}
     for inp in soup.find_all('input', type='hidden'):
@@ -461,70 +468,83 @@ def parse_nav_table(html, base_url=QSIF_NAV_URL):
     return rows, next_url, next_event_target, hidden_fields
 
 
-def fetch_qsif_historical_nav(session, max_pages=500, target_keywords=None):
-    """Fetch and parse the historical_nav page, following pagination.
+def search_qsif_scheme(session, scheme_name_query):
+    """Search the historical_nav page for a specific scheme name, using
+    the site's own search box — confirmed from actual page source:
 
-    Page 1 is a plain GET. Confirmed via live log: pagination beyond page 1
-    is an ASP.NET WebForms __doPostBack pager (e.g.
-    __doPostBack('ctl00$ContentPlaceHolder1$nav_sch$ctl01$ctl01','')),
-    NOT a real URL. This is replicated with plain requests as a POST:
-    take the hidden __VIEWSTATE/__EVENTVALIDATION/__VIEWSTATEGENERATOR
-    fields from the previous page's HTML, add __EVENTTARGET (the control
-    ID) and __EVENTARGUMENT (usually empty), and POST back to the same
-    URL — no real browser/Selenium needed, since this is just form
-    submission, not client-side JS execution.
+    - Search input field name: ctl00$ContentPlaceHolder1$txtschname
+    - 'Go' button is itself a __doPostBack (not a real submit):
+      __doPostBack('ctl00$ContentPlaceHolder1$BtnGo','')
 
-    The table contains ALL ~20 QSIF schemes interleaved by date, so
-    fetching truly everything would mean walking the entire site's
-    history for every scheme — not needed since only specific schemes
-    are held. Instead, if target_keywords is given (dict of isin ->
-    scheme keyword), pagination continues only while NEW rows matching
-    those specific keywords are still being found. Once N consecutive
-    pages in a row contribute zero new matching rows, we've clearly run
-    past the target scheme's history (other schemes may still have more
-    pages, but we don't care) and stop. This gets genuinely full history
-    for the held scheme(s) without walking irrelevant schemes' full
-    history too.
+    This returns only rows matching the query, avoiding the need to
+    paginate through all ~20 unrelated QSIF schemes' interleaved rows.
+
+    Returns (rows, next_url, event_target, hidden_fields) — same shape as
+    parse_nav_table — so the result can be fed into the same pagination
+    loop that walks subsequent pages of the search result if it spans
+    multiple pages.
     """
-    all_rows = []
-    url = QSIF_NAV_URL
-    STALL_LIMIT = 3  # stop after this many consecutive pages with no new target rows
-
-    def target_match_count(rows):
-        if not target_keywords:
-            return len(rows)
-        count = 0
-        for r in rows:
-            if any(kw.lower() in r['scheme_name'].lower() for kw in target_keywords.values()):
-                count += 1
-        return count
-
     try:
-        resp = session.get(url, headers=SCRAPE_HEADERS, timeout=15)
+        resp = session.get(QSIF_NAV_URL, headers=SCRAPE_HEADERS, timeout=15)
         resp.raise_for_status()
     except Exception as e:
-        qsif_logger.warning(f"  ⚠ Page 1 fetch failed: {e}")
+        qsif_logger.warning(f"  ⚠ Initial page fetch (before search) failed: {e}")
+        return [], None, None, {}
+
+    soup = BeautifulSoup(resp.text, 'html.parser')
+    hidden_fields = {}
+    for inp in soup.find_all('input', type='hidden'):
+        name = inp.get('name')
+        if name:
+            hidden_fields[name] = inp.get('value', '')
+
+    post_data = dict(hidden_fields)
+    post_data['ctl00$ContentPlaceHolder1$txtschname'] = scheme_name_query
+    post_data['__EVENTTARGET'] = 'ctl00$ContentPlaceHolder1$BtnGo'
+    post_data['__EVENTARGUMENT'] = ''
+
+    try:
+        resp = session.post(QSIF_NAV_URL, data=post_data, headers=SCRAPE_HEADERS, timeout=15)
+        resp.raise_for_status()
+    except Exception as e:
+        qsif_logger.warning(f"  ⚠ Search POST for '{scheme_name_query}' failed: {e}")
+        return [], None, None, {}
+
+    qsif_logger.info(f"  Searched for scheme name: '{scheme_name_query}'")
+    return parse_nav_table(resp.text, base_url=QSIF_NAV_URL)
+
+
+def fetch_qsif_scheme_full_history(session, scheme_name_query, max_pages=200):
+    """Get the FULL available NAV history for one specific scheme, using
+    the site's real search box (txtschname + BtnGo) so the server itself
+    filters to just that scheme — no need to wade through ~20 unrelated
+    schemes' interleaved rows or guess when we've seen 'enough'.
+
+    Since every page of a search result is, by definition, only rows for
+    the searched scheme, this simply paginates (via the same confirmed
+    'Next' __doPostBack mechanism) until pagination genuinely ends —
+    giving the complete history available on the site for that scheme.
+    """
+    all_rows = []
+
+    page_rows, next_url, event_target, hidden_fields = search_qsif_scheme(session, scheme_name_query)
+    if not page_rows:
+        qsif_logger.warning(f"  ⚠ Search for '{scheme_name_query}' returned zero rows")
         return all_rows
+    all_rows.extend(page_rows)
+    qsif_logger.info(f"  Search page 1: {len(page_rows)} rows")
 
-    page_rows, next_url, event_target, hidden_fields = parse_nav_table(resp.text, base_url=url)
-    if page_rows:
-        all_rows.extend(page_rows)
-    qsif_logger.info(f"  Page 1: {len(page_rows)} rows ({target_match_count(page_rows)} matching target scheme(s))")
-
-    stall_count = 0
-
+    url = QSIF_NAV_URL
     for page_num in range(2, max_pages + 1):
         if next_url:
-            # Real <a href> link — simple GET
             try:
                 resp = session.get(next_url, headers=SCRAPE_HEADERS, timeout=15)
                 resp.raise_for_status()
             except Exception as e:
-                qsif_logger.warning(f"  ⚠ Page {page_num} GET failed: {e}")
+                qsif_logger.warning(f"  ⚠ Search page {page_num} GET failed: {e}")
                 break
             request_url = next_url
         elif event_target:
-            # ASP.NET __doPostBack — replicate as POST with hidden fields
             post_data = dict(hidden_fields)
             post_data['__EVENTTARGET'] = event_target
             post_data['__EVENTARGUMENT'] = ''
@@ -532,37 +552,25 @@ def fetch_qsif_historical_nav(session, max_pages=500, target_keywords=None):
                 resp = session.post(url, data=post_data, headers=SCRAPE_HEADERS, timeout=15)
                 resp.raise_for_status()
             except Exception as e:
-                qsif_logger.warning(f"  ⚠ Page {page_num} POST (__doPostBack eventTarget='{event_target}') failed: {e}")
+                qsif_logger.warning(f"  ⚠ Search page {page_num} POST (eventTarget='{event_target}') failed: {e}")
                 break
             request_url = url
         else:
-            qsif_logger.info(f"  Stopping after page {page_num - 1}: no further pagination link (real or postback) found")
+            qsif_logger.info(f"  Search pagination ended after page {page_num - 1} "
+                              f"(no further 'Next' link) — full history fetched")
             break
 
         page_rows, next_url, event_target, hidden_fields = parse_nav_table(resp.text, base_url=request_url)
         if not page_rows:
-            qsif_logger.info(f"  Page {page_num}: no rows parsed, stopping pagination")
+            qsif_logger.info(f"  Search page {page_num}: no rows parsed, stopping")
             break
-
-        match_count = target_match_count(page_rows)
         all_rows.extend(page_rows)
-        qsif_logger.info(f"  Page {page_num}: {len(page_rows)} rows ({match_count} matching target scheme(s))")
-
-        if target_keywords:
-            if match_count == 0:
-                stall_count += 1
-                if stall_count >= STALL_LIMIT:
-                    qsif_logger.info(
-                        f"  Stopping after page {page_num}: {STALL_LIMIT} consecutive pages with no rows "
-                        f"matching target scheme(s) — assumed past their history"
-                    )
-                    break
-            else:
-                stall_count = 0
+        qsif_logger.info(f"  Search page {page_num}: {len(page_rows)} rows")
         time.sleep(1)
 
-    qsif_logger.info(f"  ✓ Total rows fetched across pagination: {len(all_rows)}")
+    qsif_logger.info(f"  ✓ Total rows for '{scheme_name_query}': {len(all_rows)}")
     return all_rows
+
 
 
 def parse_qsif_date(date_str):
@@ -574,52 +582,47 @@ def parse_qsif_date(date_str):
 
 
 def run_qsif_nav():
-    """Fetch QSIF NAV history and compute LTP + 1D change per held ISIN.
+    """Fetch full QSIF NAV history and compute LTP + 1D change per held ISIN.
 
-    Unlike before, change/changePct are computed from the two most recent
-    dated rows found directly on the historical_nav page — not by diffing
-    against nav_ltp.json from a previous run. This removes the dependency
-    on prior output being correctly committed/checked-out, which was the
-    suspected cause of QSIF's change always showing 0.0.
+    Uses the site's own search box (confirmed from page source: input
+    field ctl00$ContentPlaceHolder1$txtschname, 'Go' button is a
+    __doPostBack) to fetch each held scheme's full history directly,
+    rather than paginating through all ~20 unrelated QSIF schemes and
+    filtering client-side. One search per ISIN in QSIF_SCHEME_KEYWORDS.
+
+    change/changePct are computed from the two most recent dated rows
+    in that scheme's own history — not by diffing against nav_ltp.json
+    from a previous run.
     """
     if not QSIF_SCHEME_KEYWORDS:
         qsif_logger.warning("No QSIF_SCHEME_KEYWORDS configured")
         return {}
 
     session = requests.Session()
-    all_rows = fetch_qsif_historical_nav(session, target_keywords=QSIF_SCHEME_KEYWORDS)
-    if not all_rows:
-        qsif_logger.warning("  ⚠ No rows parsed from historical_nav page — check page structure")
-        return {}
-
-    # Dedup by (scheme_name, date) — pagination can occasionally return the
-    # same page twice (e.g. if a 'next' link cycles back to an earlier
-    # state); without this, a duplicate row would compare a date against
-    # itself and silently produce a false change of 0.0.
-    seen = set()
-    deduped_rows = []
-    for r in all_rows:
-        key = (r['scheme_name'], r['date_str'])
-        if key in seen:
-            continue
-        seen.add(key)
-        deduped_rows.append(r)
-    if len(deduped_rows) < len(all_rows):
-        qsif_logger.warning(
-            f"  ⚠ Removed {len(all_rows) - len(deduped_rows)} duplicate row(s) "
-            f"(same scheme+date seen more than once — pagination may have cycled)"
-        )
-    all_rows = deduped_rows
-
-    distinct_names = sorted(set(r['scheme_name'] for r in all_rows))
-    qsif_logger.info(f"  Distinct scheme names found on page ({len(distinct_names)}): {distinct_names}")
-
     result = {}
+
     for isin, keyword in QSIF_SCHEME_KEYWORDS.items():
-        matched = [r for r in all_rows if keyword.lower() in r['scheme_name'].lower()]
+        qsif_logger.info(f"  Fetching full history for {isin} (search: '{keyword}')")
+        matched = fetch_qsif_scheme_full_history(session, keyword)
+
         if not matched:
-            qsif_logger.warning(f"  ⚠ {isin}: no rows matched keyword '{keyword}' against {distinct_names}")
+            qsif_logger.warning(f"  ⚠ {isin}: search for '{keyword}' returned no rows")
             continue
+
+        # Dedup by date — defensive, in case pagination ever returns a
+        # page twice (would otherwise risk comparing a date to itself).
+        seen = set()
+        deduped = []
+        for r in matched:
+            if r['date_str'] in seen:
+                continue
+            seen.add(r['date_str'])
+            deduped.append(r)
+        if len(deduped) < len(matched):
+            qsif_logger.warning(
+                f"  ⚠ {isin}: removed {len(matched) - len(deduped)} duplicate date row(s)"
+            )
+        matched = deduped
 
         # Sort by parsed date, most recent first; drop unparseable dates
         dated = []
@@ -641,8 +644,7 @@ def run_qsif_nav():
             if prev_date == curr_date:
                 qsif_logger.warning(
                     f"  ⚠ {isin}: two most recent rows share the same date ({curr_date.date()}) "
-                    f"after dedup — pagination likely did not reach an earlier date. "
-                    f"Leaving change as None rather than reporting a false 0.0."
+                    f"after dedup. Leaving change as None rather than reporting a false 0.0."
                 )
             else:
                 curr_nav = curr_row['nav']
