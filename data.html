@@ -1021,7 +1021,7 @@
             </div>`;
         });
 
-        // "Web E2E Load" — triggers .github/workflows/marketdata_e2e_pipeline.yml
+        // "Web E2E Load" — triggers .github/workflows/e2e-pipeline.yml
         // (full pipeline: raw fetch -> financials -> flatten -> bucket market_data.json)
         // Fetch time/count = market_data.json's live _metadata, fetched directly
         // from GitHub (not the DB snapshot) — see renderDataSources().
@@ -3386,7 +3386,7 @@ function saveGuidanceToGitHub(ticker, jsonText, pat, date) {
     
     
     function triggerE2EWorkflow() {
-        logInfo('Triggering GitHub workflow: marketdata_e2e_pipeline.yml');
+        logInfo('Triggering GitHub workflow: e2e-pipeline.yml');
         log('⏳ Triggering Workflow');
 
         const pat = localStorage.getItem('github_pat');
@@ -3396,7 +3396,7 @@ function saveGuidanceToGitHub(ticker, jsonText, pat, date) {
             return;
         }
 
-        const apiUrl = `https://api.github.com/repos/${GITHUB_CONFIG.OWNER}/${GITHUB_CONFIG.REPO}/actions/workflows/marketdata_e2e_pipeline.yml/dispatches`;
+        const apiUrl = `https://api.github.com/repos/${GITHUB_CONFIG.OWNER}/${GITHUB_CONFIG.REPO}/actions/workflows/e2e-pipeline.yml/dispatches`;
 
         logFetch(`workflow: ${apiUrl}`);
 
@@ -3423,7 +3423,7 @@ function saveGuidanceToGitHub(ticker, jsonText, pat, date) {
                 log('❌ Invalid PAT');
                 showToast('❌ Invalid PAT token');
             } else if (r.status === 404) {
-                logError('Workflow not found', 'check marketdata_e2e_pipeline.yml exists');
+                logError('Workflow not found', 'check e2e-pipeline.yml exists');
                 log('❌ Workflow Not Found');
                 showToast('❌ Workflow not found');
             } else {
