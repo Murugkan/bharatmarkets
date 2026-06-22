@@ -30,7 +30,7 @@
         .tab:hover:not(.active){color:var(--tx1)}
         
         .content{flex:1;overflow-y:scroll !important;overflow-x:hidden;padding:12px;padding-bottom:100px;scrollbar-width:thin;scrollbar-color:rgba(0,242,255,.6) var(--s1);min-height:0;height:100%;-webkit-overflow-scrolling:touch;contain:layout style paint;will-change:scroll-position}
-        .content.canvas-active{padding:0 !important}
+        .content.canvas-active{padding:0 !important;display:flex !important;flex-direction:column !important;overflow:hidden !important}
         .content::-webkit-scrollbar{width:14px;background:transparent}
         .content::-webkit-scrollbar-track{background:transparent}
         .content::-webkit-scrollbar-thumb{background:rgba(0,242,255,.6);border-radius:8px;transition:all .2s;min-height:40px;border:3px solid transparent;background-clip:padding-box}
@@ -1003,8 +1003,8 @@ function renderTab(tab) {
         // point count for highlighting the correct D/W/M button on first render.
         ensureNavCache(s);
         const activeInterval = S.navInterval || resolveNavInterval(s);
-        html = `<div style="padding:0;margin-left:-12px;margin-right:-12px">
-          <div style="padding:8px 22px;background:var(--s1);border-bottom:1px solid var(--b1);display:flex;flex-wrap:wrap;align-items:center;gap:10px">
+        html = `<div style="padding:0;display:flex;flex-direction:column;flex:1;min-height:0">
+          <div style="padding:8px 22px;background:var(--s1);border-bottom:1px solid var(--b1);display:flex;flex-wrap:wrap;align-items:center;gap:10px;flex-shrink:0">
             <div style="display:flex;gap:2px">
               ${['D','W','M'].map(iv => `<button onclick="setNavInterval('${iv}')" style="padding:4px 11px;font-size:11px;font-weight:800;font-family:var(--mono);border-radius:5px;border:1px solid ${activeInterval===iv?'var(--ac)':'var(--b1)'};background:${activeInterval===iv?'rgba(0,242,255,.12)':'var(--s1)'};color:${activeInterval===iv?'var(--ac)':'var(--tx3)'};cursor:pointer">${iv}</button>`).join('')}
             </div>
@@ -1012,23 +1012,21 @@ function renderTab(tab) {
             <span style="font-size:11px;font-weight:800;color:var(--tx1)">₹${fmt(navVal, 3)}</span>
             <span style="font-size:10px;font-weight:700;color:${retColor(navChgPct)}">${fmtRet(navChgPct)}</span>
           </div>
-          <div style="display:flex;flex-wrap:wrap;gap:0;padding:6px 22px;background:var(--card);border-bottom:1px solid var(--b1);align-items:center">
+          <div style="display:flex;flex-wrap:wrap;gap:0;padding:6px 22px;background:var(--card);border-bottom:1px solid var(--b1);align-items:center;flex-shrink:0">
             ${[['1m',ret['1m']],['3m',ret['3m']],['6m',ret['6m']],['1y',ret['1y']],['3y',ret['3y']]].map(([lbl,v])=>`
               <div style="flex:1;min-width:56px;text-align:center;padding:4px 2px">
                 <div style="font-size:8px;color:var(--tx3);font-weight:700;text-transform:uppercase">${lbl}</div>
                 <div style="font-size:11px;font-weight:800;color:${retColor(v)}">${fmtRet(v)}</div>
               </div>`).join('')}
           </div>
-          <div style="position:relative;background:var(--s1);border-bottom:1px solid var(--b1)">
-            <div id="chart-wrap" style="position:relative;width:100%;height:calc(100vh - 230px);touch-action:manipulation"><canvas id="cv-candle" style="display:block;width:100%;height:100%;touch-action:manipulation"></canvas></div>
-          </div>
+          <div id="chart-wrap" style="position:relative;flex:1;min-height:0;width:100%;background:var(--s1);touch-action:manipulation"><canvas id="cv-candle" style="display:block;width:100%;height:100%;touch-action:manipulation"></canvas></div>
         </div>`;
         document.getElementById('content').innerHTML = html;
         setTimeout(() => { canvasLoadAndDrawChart(); }, 200);
     } else if (tab === 'canvas') {
         const _af = Object.values(S.kpiVis).every(v=>v);
-        html = `<div style="padding:0">
-          <div style="padding:5px 10px;background:var(--s1);border-bottom:1px solid var(--b1);display:flex;flex-wrap:wrap;align-items:center;gap:6px">
+        html = `<div style="padding:0;display:flex;flex-direction:column;flex:1;min-height:0">
+          <div style="padding:5px 10px;background:var(--s1);border-bottom:1px solid var(--b1);display:flex;flex-wrap:wrap;align-items:center;gap:6px;flex-shrink:0">
             ${[{k:'vol',c:'#22c55e',l:'Vol',fn:"canvasToggleMA('vol')",v:S.maVis.vol}].map(o=>`<label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${o.v?'checked':''} onchange="${o.fn}" style="accent-color:${o.c};width:12px;height:12px"><span style="font-size:9px;color:${o.c};font-weight:700">${o.l}</span></label>`).join('')}
             <span style="width:1px;height:14px;background:rgba(255,255,255,.15)"></span>
             <label style="display:flex;align-items:center;gap:4px;cursor:pointer;background:rgba(0,242,255,.08);border:1px solid rgba(0,242,255,.3);border-radius:4px;padding:2px 7px">
@@ -1046,7 +1044,7 @@ function renderTab(tab) {
             </select>
             <button onclick="toggleKPIControlsExpanded()" style="background:var(--card);color:var(--tx3);border:1px solid var(--b1);border-radius:5px;padding:3px 7px;font-size:9px;font-family:var(--mono);cursor:pointer">${S.kpiControlsExpanded?'Filters ▴':'Filters ▾'}</button>
           </div>
-          <div style="display:${S.kpiControlsExpanded?'flex':'none'};padding:5px 10px;background:var(--card);border-bottom:1px solid var(--b1);flex-wrap:wrap;gap:7px;align-items:center">
+          <div style="display:${S.kpiControlsExpanded?'flex':'none'};padding:5px 10px;background:var(--card);border-bottom:1px solid var(--b1);flex-wrap:wrap;gap:7px;align-items:center;flex-shrink:0">
             <span style="font-size:8px;color:var(--tx3);font-weight:600">Income:</span>
             ${(()=>{const ks=['rev','op','opm','pbt','net','eps','interest'];const allOn=ks.every(k=>S.kpiVis[k]),allOff=ks.every(k=>!S.kpiVis[k]);return `<input type="checkbox" id="kpi-group-all-income" data-keys="${ks.join(',')}" ${allOn?'checked':''} onchange="toggleGroupKPI('income',['${ks.join("','")}'],this.checked)" style="accent-color:#00f2ff;width:11px;height:11px" ${(!allOn&&!allOff)?'data-indeterminate':''}>`})()}
             ${[{k:'rev',c:'#22d3ee',l:'Rev'},{k:'op',c:'#ec4899',l:'Op.P'},{k:'opm',c:'#fb923c',l:'OPM%'},{k:'pbt',c:'#8b5cf6',l:'PBT'},{k:'net',c:'#4ade80',l:'Net'},{k:'eps',c:'#06b6d4',l:'EPS'},{k:'interest',c:'#e879f9',l:'Int'}].map(o=>`<label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" id="kpi-${o.k}" ${S.kpiVis[o.k]?'checked':''} onchange="toggleKPI('${o.k}')" style="accent-color:${o.c};width:12px;height:12px"><span style="font-size:9px;color:${o.c};font-weight:700">${o.l}</span></label>`).join('')}
@@ -1063,9 +1061,9 @@ function renderTab(tab) {
             ${(()=>{const ks=['promoter','roce','divpayout'];const allOn=ks.every(k=>S.kpiVis[k]);return `<input type="checkbox" id="kpi-group-all-ownret" data-keys="${ks.join(',')}" ${allOn?'checked':''} onchange="toggleGroupKPI('ownret',['${ks.join("','")}'],this.checked)" style="accent-color:#00f2ff;width:11px;height:11px">`})()}
             ${[{k:'promoter',c:'#fbbf24',l:'Prom%'},{k:'roce',c:'#c084fc',l:'ROCE%'},{k:'divpayout',c:'#60a5fa',l:'DivPay%'}].map(o=>`<label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" id="kpi-${o.k}" ${S.kpiVis[o.k]?'checked':''} onchange="toggleKPI('${o.k}')" style="accent-color:${o.c};width:12px;height:12px"><span style="font-size:9px;color:${o.c};font-weight:700">${o.l}</span></label>`).join('')}
           </div>
-          <div style="position:relative;background:var(--s1);border-bottom:1px solid var(--b1)">
-            <div id="chart-wrap" style="position:relative;width:100%;height:calc(100vh - 390px);touch-action:manipulation"><canvas id="cv-candle" style="display:block;width:100%;height:100%;touch-action:manipulation"></canvas></div>
-            <div id="vol-wrap" style="position:relative;width:100%;height:calc(100vh - 530px);border-top:1px solid var(--b1);touch-action:manipulation"><canvas id="cv-vol" style="display:block;width:100%;height:100%;touch-action:manipulation"></canvas></div>
+          <div style="display:flex;flex-direction:column;flex:1;min-height:0;background:var(--s1)">
+            <div id="chart-wrap" style="position:relative;flex:2;min-height:0;width:100%;touch-action:manipulation"><canvas id="cv-candle" style="display:block;width:100%;height:100%;touch-action:manipulation"></canvas></div>
+            <div id="vol-wrap" style="position:relative;flex:1;min-height:0;width:100%;border-top:1px solid var(--b1);touch-action:manipulation"><canvas id="cv-vol" style="display:block;width:100%;height:100%;touch-action:manipulation"></canvas></div>
           </div>
         </div>`;
         document.getElementById('content').innerHTML = html;
