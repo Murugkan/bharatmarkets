@@ -1690,14 +1690,14 @@ function drawNavLine(s){
     const GRID_DIV = 8;
     for(let i=0;i<=GRID_DIV;i++){
       const y=PAD.t+(cH/GRID_DIV)*i;
-      ctx.strokeStyle='rgba(255,255,255,.16)';ctx.lineWidth=1;
+      ctx.strokeStyle='rgba(255,255,255,.22)';ctx.lineWidth=1;
       ctx.beginPath();ctx.moveTo(PAD.l,y);ctx.lineTo(PAD.l+cW,y);ctx.stroke();
     }
     // Vertical gridlines at the same X positions the date labels use below.
     pts.forEach((p,i) => {
       if(i % xLblStep !== 0 && i !== n-1) return;
       const x = toX(p._t);
-      ctx.strokeStyle='rgba(255,255,255,.16)';ctx.lineWidth=1;
+      ctx.strokeStyle='rgba(255,255,255,.22)';ctx.lineWidth=1;
       ctx.beginPath();ctx.moveTo(x,PAD.t);ctx.lineTo(x,PAD.t+cH);ctx.stroke();
     });
 
@@ -2004,11 +2004,22 @@ function drawCandlestick(s){
   ctx.fillStyle='#070c18';
   ctx.fillRect(0,0,W,H);
 
-  // Grid lines
+  // Grid lines — horizontal
   for(let i=0;i<=8;i++){
     const y=PAD.t+(cH/8)*i;
-    ctx.strokeStyle='rgba(255,255,255,.1)';ctx.lineWidth=1;
+    ctx.strokeStyle='rgba(255,255,255,.22)';ctx.lineWidth=1;
     ctx.beginPath();ctx.moveTo(PAD.l,y);ctx.lineTo(PAD.l+cW,y);ctx.stroke();
+  }
+  // Vertical gridlines — at same positions as x-axis date labels
+  {
+    const vStep = Math.max(1, Math.floor(n / Math.min(volVisible ? 4 : 6, Math.floor(cW / 50))));
+    ctx.strokeStyle='rgba(255,255,255,.22)';ctx.lineWidth=1;
+    candles.forEach((c,i)=>{
+      if(i % vStep !== 0 && i !== n-1) return;
+      const x = barX(i);
+      if(x > PAD.l+cW-8) return;
+      ctx.beginPath();ctx.moveTo(x,PAD.t);ctx.lineTo(x,PAD.t+cH);ctx.stroke();
+    });
   }
 
   // Right axis separator (draw BEFORE labels so labels appear on top)
@@ -2322,6 +2333,18 @@ function drawVolume(s){
   ctx.strokeStyle='rgba(100,130,180,.5)';
   ctx.lineWidth=1;
   ctx.beginPath();ctx.moveTo(PAD.l,PAD.t);ctx.lineTo(PAD.l,PAD.t+cH);ctx.stroke();
+
+  // Vertical gridlines — match x-axis label positions
+  {
+    const vStep = Math.max(1, Math.floor(n / Math.min(4, Math.floor(cW/50))));
+    ctx.strokeStyle='rgba(255,255,255,.22)';ctx.lineWidth=1;
+    candles.forEach((c,i)=>{
+      if(i % vStep !== 0 && i !== n-1) return;
+      const x = PAD.l+i*gap+(gap-bw)/2;
+      if(x > PAD.l+cW-8) return;
+      ctx.beginPath();ctx.moveTo(x,PAD.t);ctx.lineTo(x,PAD.t+cH);ctx.stroke();
+    });
+  }
 
   // Volume bars - each bar colored based on corresponding candlestick
   candles.forEach((c,i)=>{
