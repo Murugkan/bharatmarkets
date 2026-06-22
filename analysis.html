@@ -30,7 +30,7 @@
         .tab:hover:not(.active){color:var(--tx1)}
         
         .content{flex:1;overflow-y:scroll !important;overflow-x:hidden;padding:12px;padding-bottom:100px;scrollbar-width:thin;scrollbar-color:rgba(0,242,255,.6) var(--s1);min-height:0;height:100%;-webkit-overflow-scrolling:touch;contain:layout style paint;will-change:scroll-position}
-        .content.canvas-active{padding:0 !important;overflow-y:hidden !important}
+        .content.canvas-active{padding:0 !important}
         .content::-webkit-scrollbar{width:14px;background:transparent}
         .content::-webkit-scrollbar-track{background:transparent}
         .content::-webkit-scrollbar-thumb{background:rgba(0,242,255,.6);border-radius:8px;transition:all .2s;min-height:40px;border:3px solid transparent;background-clip:padding-box}
@@ -1638,7 +1638,7 @@ function drawNavLine(s){
 
     const wrap = document.getElementById('chart-wrap');
     const W2 = Math.max(wrap?wrap.offsetWidth:0, cv.offsetWidth, 280);
-    const H2 = 415;
+    const H2 = Math.max(wrap?wrap.offsetHeight:0, cv.offsetHeight, 300);
     const dpr = window.devicePixelRatio || 1;
     cv.width = W2*dpr; cv.height = H2*dpr;
     cv.style.width = W2+'px'; cv.style.height = H2+'px';
@@ -1655,7 +1655,7 @@ function drawNavLine(s){
       return;
     }
 
-    const W=W2, H=415;
+    const W=W2, H=H2;
     const PAD={l:8,r:40,t:8,b:21};
     const cW=W-PAD.l-PAD.r, cH=H-PAD.t-PAD.b;
     const n=pts.length;
@@ -1908,7 +1908,7 @@ function drawCandlestick(s){
   const wrap=document.getElementById('chart-wrap');
   // offsetWidth gives the rendered pixel width — reliable after DOM paint
   const W2=Math.max(wrap?wrap.offsetWidth:0, cv.offsetWidth, 280);
-  const H2=312;  // ✅ Increased 30% (from 240)
+  const H2=Math.max(wrap?wrap.offsetHeight:0, cv.offsetHeight, 200);
   const dpr=window.devicePixelRatio||1;
   cv.width=W2*dpr;
   cv.height=H2*dpr;
@@ -2287,7 +2287,7 @@ function drawVolume(s){
   if(!cv)return;
   const wrap=document.getElementById('vol-wrap');
   const W2=Math.max(wrap?wrap.offsetWidth:0, 280);
-  const H2=140;  // increased from 130 — 12px bold labels were clipping against the canvas bottom edge
+  const H2=Math.max(wrap?wrap.offsetHeight:0, 100);
   const dpr=window.devicePixelRatio||1;
   cv.width=W2*dpr;
   cv.height=H2*dpr;
