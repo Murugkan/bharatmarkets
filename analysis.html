@@ -2090,10 +2090,12 @@ function drawCandlestick(s){
     ctx.lineWidth=.6;ctx.setLineDash([3,3]);
     ctx.beginPath();ctx.moveTo(PAD.l,lastY);ctx.lineTo(PAD.l+cW,lastY);ctx.stroke();
     ctx.setLineDash([]);
-    // Price badge on right axis
+    // Price badge on right axis — clamp further from the top gridline label
+    // (drawn at PAD.t) to avoid the two labels colliding when the live price
+    // sits near the chart's visible maximum.
     ctx.fillStyle=bull?'#00d084':'#ff3b5c';
     ctx.font='bold 9px JetBrains Mono,monospace';ctx.textAlign='right';
-    ctx.fillText(Math.round(_ltp).toLocaleString('en-IN'),W-2,Math.max(lastY+4,PAD.t+10));
+    ctx.fillText(Math.round(_ltp).toLocaleString('en-IN'),W-2,Math.max(lastY+4,PAD.t+24));
   }
 
   // X-axis date labels - optimized for mobile
@@ -2341,13 +2343,17 @@ function drawVolume(s){
   ctx.beginPath();ctx.moveTo(W-PAD.r,0);ctx.lineTo(W-PAD.r,H);ctx.stroke();
   
   // ✅ Volume labels on RIGHT side (RIGHT aligned, with padding from edge)
+  // Avoid colliding with the price-range labels (top/bottom corners, drawn
+  // below) by keeping the volume scale's own labels inset within [PAD.t+10, PAD.t+cH-10]
+  // instead of touching the exact same y as the price labels.
   ctx.fillStyle='rgba(255,255,255,1)';
   ctx.font='bold 10px JetBrains Mono,monospace';
   ctx.textAlign='right';  // ✅ Changed from left to right
   ctx.textBaseline='middle';
   const maxVol = Math.max(...candles.map(c=>c.v))||1;
+  const volLabelTop = PAD.t + 10, volLabelBottom = PAD.t + cH - 10;
   for(let i=0; i<=2; i++){
-    const y = PAD.t + cH - (cH/2)*i;
+    const y = volLabelBottom - ((volLabelBottom-volLabelTop)/2)*i;
     const volValue = (i/2) * maxVol;
     let label;
     if (volValue >= 1e6) {
@@ -2360,7 +2366,8 @@ function drawVolume(s){
     ctx.fillText(label, W-6, y);  // ✅ Draw on right side (W-6)
   }
   
-  // Price labels on right axis
+  // Price labels on right axis — anchored to the true canvas top/bottom edges,
+  // now clear of the volume scale labels above (which stop 10px short of these).
   ctx.fillStyle='rgba(255,255,255,.95)';
   ctx.font='bold 9px JetBrains Mono,monospace';
   ctx.textAlign='right';
