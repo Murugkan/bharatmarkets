@@ -1062,7 +1062,7 @@ function renderTab(tab) {
           </div>
           <div style="position:relative;background:var(--s1);font-size:0;line-height:0">
             <div id="chart-wrap" style="position:relative;width:100%;touch-action:manipulation"><canvas id="cv-candle" style="display:block;width:100%;height:100%;touch-action:manipulation"></canvas></div>
-            <div id="vol-wrap" style="position:relative;width:100%;border-top:1px solid var(--b1);touch-action:manipulation"><canvas id="cv-vol" style="display:block;width:100%;height:100%;touch-action:manipulation"></canvas></div>
+            ${S.maVis.vol ? `<div id="vol-wrap" style="position:relative;width:100%;border-top:1px solid var(--b1);touch-action:manipulation"><canvas id="cv-vol" style="display:block;width:100%;height:100%;touch-action:manipulation"></canvas></div>` : ''}
           </div>
         </div>`;
         document.getElementById('content').innerHTML = html;
@@ -2559,7 +2559,7 @@ function setNavInterval(iv){
 }
 function canvasToggleMA(key){
   S.maVis[key]=!S.maVis[key];
-  if(key==='vol'){ canvasLoadAndDrawChart(); }
+  if(key==='vol'){ renderTab('canvas'); }
   else scheduleChartRedraw();
 }
 function toggleKPIControlsExpanded(){
@@ -2620,17 +2620,10 @@ function canvasLoadAndDrawChart() {
     if(outerDiv && outerDiv !== content) outerDiv.style.height = available + 'px';
 
     if(volWrap) {
-      if(S.maVis.vol) {
-        const volH    = 160;
-        const candleH = available - volH;
-        chartWrap.style.height = candleH + 'px';
-        volWrap.style.height   = volH    + 'px';
-        volWrap.style.display  = '';
-      } else {
-        chartWrap.style.height = available + 'px';
-        volWrap.style.height   = '0';
-        volWrap.style.display  = 'none';
-      }
+      const volH    = 160;
+      const candleH = available - volH;
+      chartWrap.style.height = candleH + 'px';
+      volWrap.style.height   = volH    + 'px';
     } else {
       chartWrap.style.height = available + 'px';
     }
