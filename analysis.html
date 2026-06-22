@@ -1687,7 +1687,7 @@ function drawNavLine(s){
 
     // Grid lines — denser than the equity chart since NAV oscillations are
     // often small relative to the full y-range.
-    const GRID_DIV = 13;
+    const GRID_DIV = 8;
     for(let i=0;i<=GRID_DIV;i++){
       const y=PAD.t+(cH/GRID_DIV)*i;
       ctx.strokeStyle='rgba(255,255,255,.16)';ctx.lineWidth=1;
@@ -2004,8 +2004,8 @@ function drawCandlestick(s){
   ctx.fillRect(0,0,W,H);
 
   // Grid lines
-  for(let i=0;i<=4;i++){
-    const y=PAD.t+(cH/4)*i;
+  for(let i=0;i<=8;i++){
+    const y=PAD.t+(cH/8)*i;
     ctx.strokeStyle='rgba(255,255,255,.1)';ctx.lineWidth=1;
     ctx.beginPath();ctx.moveTo(PAD.l,y);ctx.lineTo(PAD.l+cW,y);ctx.stroke();
   }
@@ -2018,9 +2018,9 @@ function drawCandlestick(s){
   ctx.beginPath();ctx.moveTo(W-PAD.r,0);ctx.lineTo(W-PAD.r,H);ctx.stroke();
 
   // Price labels (draw AFTER background so they're visible on top)
-  for(let i=0;i<=4;i++){
-    const y=PAD.t+(cH/4)*i;
-    const price=mx-(mx-mn)*(i/4);
+  for(let i=0;i<=8;i++){
+    const y=PAD.t+(cH/8)*i;
+    const price=mx-(mx-mn)*(i/8);
     ctx.fillStyle='rgba(255,255,255,1)';
     ctx.font='bold 11px JetBrains Mono,monospace';ctx.textAlign='right';ctx.textBaseline='middle';
     ctx.fillText(Math.round(price).toLocaleString('en-IN'),W-6,y);
@@ -2529,7 +2529,7 @@ function setNavInterval(iv){
 }
 function canvasToggleMA(key){
   S.maVis[key]=!S.maVis[key];
-  if(key==='vol'){renderTab('canvas');}
+  if(key==='vol'){ canvasLoadAndDrawChart(); }
   else scheduleChartRedraw();
 }
 function toggleKPIControlsExpanded(){
@@ -2590,10 +2590,17 @@ function canvasLoadAndDrawChart() {
     if(outerDiv && outerDiv !== content) outerDiv.style.height = available + 'px';
 
     if(volWrap) {
-      const volH    = 160;
-      const candleH = available - volH;
-      chartWrap.style.height = candleH + 'px';
-      volWrap.style.height   = volH    + 'px';
+      if(S.maVis.vol) {
+        const volH    = 160;
+        const candleH = available - volH;
+        chartWrap.style.height = candleH + 'px';
+        volWrap.style.height   = volH    + 'px';
+        volWrap.style.display  = '';
+      } else {
+        chartWrap.style.height = available + 'px';
+        volWrap.style.height   = '0';
+        volWrap.style.display  = 'none';
+      }
     } else {
       chartWrap.style.height = available + 'px';
     }
