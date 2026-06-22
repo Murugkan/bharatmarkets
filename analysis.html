@@ -592,6 +592,7 @@ function switchTab(tab) {
     event.target.classList.add('active');
     history.replaceState(null, '', '#' + tab);
     document.getElementById('content').classList.toggle('canvas-active', tab === 'canvas');
+    if(tab !== 'canvas') setupChartInteraction._initializedFor = null;
     renderTab(tab);
 }
 
@@ -2570,25 +2571,34 @@ function toggleKPI(k){
 
 function canvasLoadAndDrawChart() {
   if(!currentStock) return;
-  // Set explicit px heights on chart wraps based on actual content div height.
-  // Using JS measurement bypasses CSS contain/flex propagation issues.
-  const content = document.getElementById('content');
+
+  // Measure fixed chrome elements to compute available chart height.
+  // Cannot use content.clientHeight because contain:layout makes it unreliable.
+  const headerEl = document.querySelector('.header');
+  const tabsEl   = document.querySelector('.tabs');
+  const footerEl = document.querySelector('.footer');
+  const chromeH  = (headerEl ? headerEl.offsetHeight : 44)
+                 + (tabsEl   ? tabsEl.offsetHeight   : 44)
+                 + (footerEl ? footerEl.offsetHeight  : 60);
+
   const chartWrap = document.getElementById('chart-wrap');
-  const volWrap = document.getElementById('vol-wrap');
-  if(content && chartWrap) {
-    const contentH = content.clientHeight;
+  const volWrap   = document.getElementById('vol-wrap');
+
+  if(chartWrap) {
+    const content   = document.getElementById('content');
     let toolbarH = 0;
-    content.querySelectorAll('.cv-toolbar').forEach(el => { toolbarH += el.offsetHeight; });
-    const available = Math.max(200, contentH - toolbarH);
+    if(content) content.querySelectorAll('.cv-toolbar').forEach(el => { toolbarH += el.offsetHeight; });
+    const available = Math.max(200, window.innerHeight - chromeH - toolbarH);
     if(volWrap) {
-      const volH = Math.max(100, Math.floor(available / 3));
+      const volH    = Math.max(120, Math.floor(available / 3));
       const candleH = available - volH;
       chartWrap.style.height = candleH + 'px';
-      volWrap.style.height = volH + 'px';
+      volWrap.style.height   = volH    + 'px';
     } else {
       chartWrap.style.height = available + 'px';
     }
   }
+
   attachChartResizeObserver(currentStock);
   scheduleTACharts(currentStock);
   setupChartInteraction();
@@ -2601,7 +2611,7 @@ function canvasLoadAndDrawChart() {
 function setupChartInteraction(){
   const canvas = document.getElementById('cv-candle');
   if(!canvas) return;
-  if(setupChartInteraction._initializedFor === canvas) return;  // already wired for THIS canvas node
+  if(setupChartInteraction._initializedFor === canvas) return;
   setupChartInteraction._initializedFor = canvas;
   const t={lastDist:0,isPanning:false,startX:0,startPan:0};
   let lastT=0;
