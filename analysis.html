@@ -30,6 +30,7 @@
         .tab:hover:not(.active){color:var(--tx1)}
         
         .content{flex:1;overflow-y:scroll !important;overflow-x:hidden;padding:12px;padding-bottom:100px;scrollbar-width:thin;scrollbar-color:rgba(0,242,255,.6) var(--s1);min-height:0;height:100%;-webkit-overflow-scrolling:touch;contain:layout style paint;will-change:scroll-position}
+        .content.canvas-active{padding:0 !important;overflow-y:hidden !important}
         .content::-webkit-scrollbar{width:14px;background:transparent}
         .content::-webkit-scrollbar-track{background:transparent}
         .content::-webkit-scrollbar-thumb{background:rgba(0,242,255,.6);border-radius:8px;transition:all .2s;min-height:40px;border:3px solid transparent;background-clip:padding-box}
@@ -552,6 +553,7 @@ async function loadStock() {
                 t.classList.toggle('active', t.getAttribute('onclick') === "switchTab('" + initTab + "')");
             });
         }
+        document.getElementById('content').classList.toggle('canvas-active', initTab === 'canvas');
         renderTab(initTab);
     } catch(e) {
         document.getElementById('content').innerHTML = '<div class="placeholder"><div class="placeholder-emoji">❌</div>Error: ' + e.message + '</div>';
@@ -589,6 +591,7 @@ function switchTab(tab) {
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
     event.target.classList.add('active');
     history.replaceState(null, '', '#' + tab);
+    document.getElementById('content').classList.toggle('canvas-active', tab === 'canvas');
     renderTab(tab);
 }
 
@@ -1017,7 +1020,7 @@ function renderTab(tab) {
               </div>`).join('')}
           </div>
           <div style="position:relative;background:var(--s1);border-bottom:1px solid var(--b1)">
-            <div id="chart-wrap" style="position:relative;width:100%;height:530px;touch-action:manipulation"><canvas id="cv-candle" style="display:block;width:100%;height:100%;touch-action:manipulation"></canvas></div>
+            <div id="chart-wrap" style="position:relative;width:100%;height:calc(100vh - 230px);touch-action:manipulation"><canvas id="cv-candle" style="display:block;width:100%;height:100%;touch-action:manipulation"></canvas></div>
           </div>
         </div>`;
         document.getElementById('content').innerHTML = html;
@@ -1061,8 +1064,8 @@ function renderTab(tab) {
             ${[{k:'promoter',c:'#fbbf24',l:'Prom%'},{k:'roce',c:'#c084fc',l:'ROCE%'},{k:'divpayout',c:'#60a5fa',l:'DivPay%'}].map(o=>`<label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" id="kpi-${o.k}" ${S.kpiVis[o.k]?'checked':''} onchange="toggleKPI('${o.k}')" style="accent-color:${o.c};width:12px;height:12px"><span style="font-size:9px;color:${o.c};font-weight:700">${o.l}</span></label>`).join('')}
           </div>
           <div style="position:relative;background:var(--s1);border-bottom:1px solid var(--b1)">
-            <div id="chart-wrap" style="position:relative;width:100%;height:312px;touch-action:manipulation"><canvas id="cv-candle" style="display:block;width:100%;height:100%;touch-action:manipulation"></canvas></div>
-            <div id="vol-wrap" style="position:relative;width:100%;height:200px;border-top:1px solid var(--b1);touch-action:manipulation"><canvas id="cv-vol" style="display:block;width:100%;height:100%;touch-action:manipulation"></canvas></div>
+            <div id="chart-wrap" style="position:relative;width:100%;height:calc(100vh - 390px);touch-action:manipulation"><canvas id="cv-candle" style="display:block;width:100%;height:100%;touch-action:manipulation"></canvas></div>
+            <div id="vol-wrap" style="position:relative;width:100%;height:calc(100vh - 530px);border-top:1px solid var(--b1);touch-action:manipulation"><canvas id="cv-vol" style="display:block;width:100%;height:100%;touch-action:manipulation"></canvas></div>
           </div>
         </div>`;
         document.getElementById('content').innerHTML = html;
