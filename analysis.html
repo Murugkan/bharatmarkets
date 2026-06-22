@@ -30,7 +30,7 @@
         .tab:hover:not(.active){color:var(--tx1)}
         
         .content{flex:1;overflow-y:scroll !important;overflow-x:hidden;padding:12px;padding-bottom:100px;scrollbar-width:thin;scrollbar-color:rgba(0,242,255,.6) var(--s1);min-height:0;height:100%;-webkit-overflow-scrolling:touch;contain:layout style paint;will-change:scroll-position}
-        .content.canvas-active{padding:0 !important}
+        .content.canvas-active{padding:0 !important;overflow:hidden !important}
         .content::-webkit-scrollbar{width:14px;background:transparent}
         .content::-webkit-scrollbar-track{background:transparent}
         .content::-webkit-scrollbar-thumb{background:rgba(0,242,255,.6);border-radius:8px;transition:all .2s;min-height:40px;border:3px solid transparent;background-clip:padding-box}
@@ -2569,8 +2569,6 @@ function toggleKPI(k){
 function canvasLoadAndDrawChart() {
   if(!currentStock) return;
 
-  // Measure fixed chrome elements to compute available chart height.
-  // Cannot use content.clientHeight because contain:layout makes it unreliable.
   const headerEl = document.querySelector('.header');
   const tabsEl   = document.querySelector('.tabs');
   const footerEl = document.querySelector('.footer');
@@ -2582,10 +2580,15 @@ function canvasLoadAndDrawChart() {
   const volWrap   = document.getElementById('vol-wrap');
 
   if(chartWrap) {
-    const content   = document.getElementById('content');
+    const content = document.getElementById('content');
     let toolbarH = 0;
     if(content) content.querySelectorAll('.cv-toolbar').forEach(el => { toolbarH += el.offsetHeight; });
     const available = Math.max(300, window.innerHeight - chromeH - toolbarH);
+
+    // Set outer container to exact height so content div has nothing to scroll
+    const outerDiv = chartWrap.closest('div[style*="background:var(--s1)"]') || chartWrap.parentElement;
+    if(outerDiv && outerDiv !== content) outerDiv.style.height = available + 'px';
+
     if(volWrap) {
       const volH    = 160;
       const candleH = available - volH;
