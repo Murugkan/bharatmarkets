@@ -1000,7 +1000,7 @@ function renderTab(tab) {
         // point count for highlighting the correct D/W/M button on first render.
         ensureNavCache(s);
         const activeInterval = S.navInterval || resolveNavInterval(s);
-        html = `<div style="padding:0;margin-left:-12px;margin-right:-12px;margin-bottom:-70px">
+        html = `<div style="padding:0;margin-left:-12px;margin-right:-12px">
           <div style="padding:8px 22px;background:var(--s1);border-bottom:1px solid var(--b1);display:flex;flex-wrap:wrap;align-items:center;gap:10px">
             <div style="display:flex;gap:2px">
               ${['D','W','M'].map(iv => `<button onclick="setNavInterval('${iv}')" style="padding:4px 11px;font-size:11px;font-weight:800;font-family:var(--mono);border-radius:5px;border:1px solid ${activeInterval===iv?'var(--ac)':'var(--b1)'};background:${activeInterval===iv?'rgba(0,242,255,.12)':'var(--s1)'};color:${activeInterval===iv?'var(--ac)':'var(--tx3)'};cursor:pointer">${iv}</button>`).join('')}
@@ -1017,14 +1017,14 @@ function renderTab(tab) {
               </div>`).join('')}
           </div>
           <div style="position:relative;background:var(--s1);border-bottom:1px solid var(--b1)">
-            <div id="chart-wrap" style="position:relative;width:100%;height:415px;touch-action:manipulation"><canvas id="cv-candle" style="display:block;width:100%;height:100%;touch-action:manipulation"></canvas></div>
+            <div id="chart-wrap" style="position:relative;width:100%;height:530px;touch-action:manipulation"><canvas id="cv-candle" style="display:block;width:100%;height:100%;touch-action:manipulation"></canvas></div>
           </div>
         </div>`;
         document.getElementById('content').innerHTML = html;
         setTimeout(() => { canvasLoadAndDrawChart(); }, 200);
     } else if (tab === 'canvas') {
         const _af = Object.values(S.kpiVis).every(v=>v);
-        html = `<div style="padding:0;padding-bottom:100px">
+        html = `<div style="padding:0">
           <div style="padding:5px 10px;background:var(--s1);border-bottom:1px solid var(--b1);display:flex;flex-wrap:wrap;align-items:center;gap:6px">
             ${[{k:'vol',c:'#22c55e',l:'Vol',fn:"canvasToggleMA('vol')",v:S.maVis.vol}].map(o=>`<label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" ${o.v?'checked':''} onchange="${o.fn}" style="accent-color:${o.c};width:12px;height:12px"><span style="font-size:9px;color:${o.c};font-weight:700">${o.l}</span></label>`).join('')}
             <span style="width:1px;height:14px;background:rgba(255,255,255,.15)"></span>
@@ -1062,7 +1062,7 @@ function renderTab(tab) {
           </div>
           <div style="position:relative;background:var(--s1);border-bottom:1px solid var(--b1)">
             <div id="chart-wrap" style="position:relative;width:100%;height:312px;touch-action:manipulation"><canvas id="cv-candle" style="display:block;width:100%;height:100%;touch-action:manipulation"></canvas></div>
-            <div id="vol-wrap" style="position:relative;width:100%;height:140px;border-top:1px solid var(--b1);touch-action:manipulation"><canvas id="cv-vol" style="display:block;width:100%;height:100%;touch-action:manipulation"></canvas></div>
+            <div id="vol-wrap" style="position:relative;width:100%;height:200px;border-top:1px solid var(--b1);touch-action:manipulation"><canvas id="cv-vol" style="display:block;width:100%;height:100%;touch-action:manipulation"></canvas></div>
           </div>
         </div>`;
         document.getElementById('content').innerHTML = html;
