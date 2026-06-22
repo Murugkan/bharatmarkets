@@ -1944,7 +1944,8 @@ function drawCandlestick(s){
   
 
   const W=W2,H=H2;
-  const PAD={l:8,r:62,t:8,b:22};  // r:62 fits 7px KPI labels like "Sales 604Cr"
+  const volVisible = S.maVis.vol && !!document.getElementById('vol-wrap');
+  const PAD={l:8,r:62,t:8,b: volVisible ? 22 : 36};  // more bottom pad when vol hidden so x-axis shows
   const cW=W-PAD.l-PAD.r, cH=H-PAD.t-PAD.b;
   const n=candles.length;
   const gap=cW/n;
@@ -2098,7 +2099,7 @@ function drawCandlestick(s){
   }
 
   // X-axis date labels - optimized for mobile
-  const maxLabels = Math.min(4, Math.floor(cW / 50));  // ✅ Fewer labels on mobile
+  const maxLabels = Math.min(volVisible ? 4 : 6, Math.floor(cW / 50));
   const lblStep = Math.max(1, Math.floor(n / maxLabels));
   ctx.fillStyle='rgba(255,255,255,0.9)';
   ctx.font='bold 12px sans-serif';  // ✅ Bigger font for mobile
