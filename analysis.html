@@ -1993,20 +1993,21 @@ function drawCandlestick(s){
   }
   if(mn===Infinity || mx===-Infinity){ mn=0; mx=1; }
   const baseRng = mx - mn || 1;
-  const mid = (mx + mn) / 2;
-  // yAxisZoom: >1 = zoom in (narrower range = taller bars), <1 = zoom out
+  // yAxisZoom: >1 = zoom in (narrower range = taller bars)
   const rng = baseRng / (S.yAxisZoom || 1);
-  // yPanOffset: fraction of rng to shift the window centre up/down
-  const yShift = (S.yPanOffset || 0) * rng;
-  const vMx = mid + rng / 2 - yShift;
-  const vMn = mid - rng / 2 - yShift;
+  const mid = (mx + mn) / 2;
+  const zMx = mid + rng / 2;
+  const zMn = mid - rng / 2;
 
-  const toY = p => PAD.t + ((vMx - p) / rng) * cH;
+  // toY uses the UNSHIFTED window — ctx.translate handles vertical pan
+  const toY = p => PAD.t + ((zMx - p) / rng) * cH;
   const barX = i => PAD.l + i*gap + gap/2;
 
-  // panPx: pixel offset for vertical pan — applied via canvas translate
-  // so ALL content (bars, KPIs, labels) shifts together uniformly
+  // panPx: canvas translate amount — negative = content moves up
   const panPx = -(S.yPanOffset || 0) * cH;
+  // Price values visible after pan (for axis labels)
+  const vMx = zMx + (S.yPanOffset || 0) * rng;
+  const vMn = zMn + (S.yPanOffset || 0) * rng;
 
   // Background
   ctx.fillStyle='#070c18';
@@ -2261,11 +2262,12 @@ function drawCandlestick(s){
   // LTP price badge on right axis
   const _ltpFixed = resolveField(s, 'ltp');
   if(_ltpFixed){
-    const lastY = toY(_ltpFixed) + panPx;  // toY gives untranslated coord; add panPx for screen pos
+    const lastY = toY(_ltpFixed) + panPx;
     const bull = candles.length && _ltpFixed >= candles[0].c;
     ctx.fillStyle=bull?'#00d084':'#ff3b5c';
     ctx.font='bold 9px JetBrains Mono,monospace';ctx.textAlign='right';
-    ctx.fillText(Math.round(_ltpFixed).toLocaleString('en-IN'),W-2,Math.max(lastY+4,PAD.t+24));
+    const clampedY = Math.min(Math.max(lastY, PAD.t+12), H-PAD.b-4);
+    ctx.fillText(Math.round(_ltpFixed).toLocaleString('en-IN'),W-2,clampedY);
   }
 
   // X-axis date labels — fixed, not panned
