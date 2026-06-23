@@ -2004,9 +2004,17 @@ function drawCandlestick(s){
   const toY = p => PAD.t + ((vMx - p) / rng) * cH;
   const barX = i => PAD.l + i*gap + gap/2;
 
+  // panPx: pixel offset for vertical pan — applied via canvas translate
+  // so ALL content (bars, KPIs, labels) shifts together uniformly
+  const panPx = -(S.yPanOffset || 0) * cH;
+
   // Background
   ctx.fillStyle='#070c18';
   ctx.fillRect(0,0,W,H);
+
+  // Apply vertical pan as a canvas translate — all chart content shifts together
+  ctx.save();
+  ctx.translate(0, panPx);
 
   // Grid lines — horizontal
   for(let i=0;i<=8;i++){
@@ -2024,22 +2032,6 @@ function drawCandlestick(s){
       if(x > PAD.l+cW-8) return;
       ctx.beginPath();ctx.moveTo(x,PAD.t);ctx.lineTo(x,PAD.t+cH);ctx.stroke();
     });
-  }
-
-  // Right axis separator (draw BEFORE labels so labels appear on top)
-  ctx.fillStyle='rgba(7,12,24,.8)';
-  ctx.fillRect(W-PAD.r,0,PAD.r,H);
-  ctx.strokeStyle='rgba(100,130,180,.6)';  // ✅ Brighter blue for visibility
-  ctx.lineWidth=1.5;  // ✅ Slightly thicker
-  ctx.beginPath();ctx.moveTo(W-PAD.r,0);ctx.lineTo(W-PAD.r,H);ctx.stroke();
-
-  // Price labels (draw AFTER background so they're visible on top)
-  for(let i=0;i<=8;i++){
-    const y=PAD.t+(cH/8)*i;
-    const price=vMx-(vMx-vMn)*(i/8);
-    ctx.fillStyle='rgba(255,255,255,1)';
-    ctx.font='bold 11px JetBrains Mono,monospace';ctx.textAlign='right';ctx.textBaseline='middle';
-    ctx.fillText(Math.round(price).toLocaleString('en-IN'),W-6,y);
   }
 
   // Clip all chart drawing to chart area — nothing bleeds into right axis strip
@@ -2085,10 +2077,10 @@ function drawCandlestick(s){
     ctx.beginPath();ctx.moveTo(cx,zClose);ctx.lineTo(cx+bw/2,zClose);ctx.stroke();
   });
 
-  // Restore chart clip — x-axis labels and right-axis items draw freely
+  // Restore chart clip
   ctx.restore();
 
-  // Current price dashed line
+  // ── KPI overlays and LTP line — inside pan translate so they move with candles ──
   const _ltp = resolveField(s, 'ltp');
   if(_ltp){
     const lastY=toY(_ltp);
@@ -2097,38 +2089,7 @@ function drawCandlestick(s){
     ctx.lineWidth=.6;ctx.setLineDash([3,3]);
     ctx.beginPath();ctx.moveTo(PAD.l,lastY);ctx.lineTo(PAD.l+cW,lastY);ctx.stroke();
     ctx.setLineDash([]);
-    // Price badge on right axis — clamp further from the top gridline label
-    // (drawn at PAD.t) to avoid the two labels colliding when the live price
-    // sits near the chart's visible maximum.
-    ctx.fillStyle=bull?'#00d084':'#ff3b5c';
-    ctx.font='bold 9px JetBrains Mono,monospace';ctx.textAlign='right';
-    ctx.fillText(Math.round(_ltp).toLocaleString('en-IN'),W-2,Math.max(lastY+4,PAD.t+24));
   }
-
-  // X-axis date labels - optimized for mobile
-  const maxLabels = Math.min(volVisible ? 4 : 6, Math.floor(cW / 50));
-  const lblStep = Math.max(1, Math.floor(n / maxLabels));
-  ctx.fillStyle='rgba(255,255,255,0.9)';
-  ctx.font='bold 12px sans-serif';  // ✅ Bigger font for mobile
-  ctx.textBaseline = 'top';
-  candles.forEach((c,i)=>{
-    if(i % lblStep !== 0 && i !== n-1) return;
-    let lbl = '';
-    
-    // Parse date string YYYY-MM-DD
-    if(c.d && typeof c.d === 'string') {
-      const parts = c.d.split('-');
-      if(parts.length === 3) {
-        const [yyyy, mm, dd] = parts;
-        lbl = mm+'/'+ yyyy.slice(2);  // monthly-only data, always show MM/YY
-      }
-    }
-    
-    const x = barX(i);
-    if(x > PAD.l+cW-8) return;
-    ctx.textAlign = i===0 ? 'left' : (i===n-1 ? 'right' : 'center');
-    ctx.fillText(lbl, x, PAD.t + cH + 10);  // ✅ More space below
-  });
 
   // ── KPI overlays on price chart ──────────────────────────────────
   const quarterly = getQuarterlyData(s);
@@ -2225,10 +2186,7 @@ function drawCandlestick(s){
     const vals = pts.map(p=>p.v);
     const vMin = Math.min(...vals)*0.92, vMax = Math.max(...vals)*1.08;
     const vRng = vMax - vMin || 1;
-    // panPx: negative because KPI pixel coords increase downward,
-    // but yPanOffset>0 means "scroll up" (bars move up = smaller y values)
-    const panPx = -(S.yPanOffset||0) * cH;
-    const yTop = PAD.t + 4 + panPx, yBot = H - PAD.b - 16 + panPx;
+    const yTop = PAD.t + 4, yBot = H - PAD.b - 16;
     const kpiY = v => yBot - ((v - vMin) / vRng) * (yBot - yTop);
 
     ctx.save();
@@ -2264,7 +2222,7 @@ function drawCandlestick(s){
       });
     });
 
-    ctx.restore(); // restore clip
+    ctx.restore(); // restore KPI clip
   });
   } catch(e) {
     const cv = document.getElementById('cv-candle');
@@ -2280,6 +2238,58 @@ function drawCandlestick(s){
       ctx.fillText(e.message, cv.width/2, cv.height/2 + 20);
     }
   }
+
+  // ── End pan translate — fixed UI elements drawn below ──
+  ctx.restore();
+
+  // Right axis separator
+  ctx.fillStyle='rgba(7,12,24,.8)';
+  ctx.fillRect(W-PAD.r,0,PAD.r,H);
+  ctx.strokeStyle='rgba(100,130,180,.6)';
+  ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.moveTo(W-PAD.r,0);ctx.lineTo(W-PAD.r,H);ctx.stroke();
+
+  // Price labels — fixed to canvas, shift values to reflect pan
+  for(let i=0;i<=8;i++){
+    const y=PAD.t+(cH/8)*i;
+    const price=vMx-(vMx-vMn)*(i/8);
+    ctx.fillStyle='rgba(255,255,255,1)';
+    ctx.font='bold 11px JetBrains Mono,monospace';ctx.textAlign='right';ctx.textBaseline='middle';
+    ctx.fillText(Math.round(price).toLocaleString('en-IN'),W-6,y);
+  }
+
+  // LTP price badge on right axis
+  const _ltpFixed = resolveField(s, 'ltp');
+  if(_ltpFixed){
+    const lastY = toY(_ltpFixed) + panPx;  // toY gives untranslated coord; add panPx for screen pos
+    const bull = candles.length && _ltpFixed >= candles[0].c;
+    ctx.fillStyle=bull?'#00d084':'#ff3b5c';
+    ctx.font='bold 9px JetBrains Mono,monospace';ctx.textAlign='right';
+    ctx.fillText(Math.round(_ltpFixed).toLocaleString('en-IN'),W-2,Math.max(lastY+4,PAD.t+24));
+  }
+
+  // X-axis date labels — fixed, not panned
+  const maxLabels = Math.min(volVisible ? 4 : 6, Math.floor(cW / 50));
+  const lblStep = Math.max(1, Math.floor(n / maxLabels));
+  ctx.fillStyle='rgba(255,255,255,0.9)';
+  ctx.font='bold 12px sans-serif';
+  ctx.textBaseline = 'top';
+  candles.forEach((c,i)=>{
+    if(i % lblStep !== 0 && i !== n-1) return;
+    let lbl = '';
+    if(c.d && typeof c.d === 'string') {
+      const parts = c.d.split('-');
+      if(parts.length === 3) {
+        const [yyyy, mm] = parts;
+        lbl = mm+'/'+ yyyy.slice(2);
+      }
+    }
+    const x = barX(i);
+    if(x > PAD.l+cW-8) return;
+    ctx.textAlign = i===0 ? 'left' : (i===n-1 ? 'right' : 'center');
+    ctx.fillText(lbl, x, PAD.t + cH + 10);
+  });
+
   } catch(e) {} // close outer try wrapping drawCandlestick body
 }
 
