@@ -2660,7 +2660,7 @@ function setupChartInteraction(){
   const go=()=>{const n=performance.now();if(n-lastT>=32){scheduleTACharts(currentStock);lastT=n;}};
   const bpp=()=>{const w=canvas.offsetWidth||320;return Math.max(10,Math.round(Math.max(20,Math.floor((w-60)/7))/S.chartZoom))/(w-60);};
   // vpp: fraction of price range per pixel of drag. 0.003 = 100px drag shifts 30% of range.
-  const vpp=()=>0.005;
+  const vpp=()=>0.001;
 
   canvas.addEventListener('mousedown',e=>{t.isPanning=true;t.startX=e.clientX;t.startY=e.clientY;t.startPan=S.panOffset;t.startYPan=S.yPanOffset||0;},{passive:true});
   document.addEventListener('mousemove',e=>{
@@ -2710,9 +2710,9 @@ function setupChartInteraction(){
     }
   };
   const te=()=>{t.isPanning=false;t.lastDist=0;t.panAxis=null;};
-  canvas.ontouchstart=ts;canvas.addEventListener('touchmove',tm,{passive:false});canvas.ontouchend=te;
+  canvas.ontouchstart=e=>{e.preventDefault();ts(e);};canvas.addEventListener('touchmove',tm,{passive:false});canvas.ontouchend=te;
   const v=document.getElementById('cv-vol');
-  if(v){v.ontouchstart=ts;v.addEventListener('touchmove',tm,{passive:false});v.ontouchend=te;}
+  if(v){v.ontouchstart=e=>{e.preventDefault();ts(e);};v.addEventListener('touchmove',tm,{passive:false});v.ontouchend=te;}
 }
 // ════════════════════════════════════════════════════════
 // CHARTS TAB FUNCTION
