@@ -2225,8 +2225,9 @@ function drawCandlestick(s){
     const vals = pts.map(p=>p.v);
     const vMin = Math.min(...vals)*0.92, vMax = Math.max(...vals)*1.08;
     const vRng = vMax - vMin || 1;
-    // Shift KPI pixel bounds proportionally with price pan
-    const panPx = (S.yPanOffset||0) * cH;
+    // panPx: negative because KPI pixel coords increase downward,
+    // but yPanOffset>0 means "scroll up" (bars move up = smaller y values)
+    const panPx = -(S.yPanOffset||0) * cH;
     const yTop = PAD.t + 4 + panPx, yBot = H - PAD.b - 16 + panPx;
     const kpiY = v => yBot - ((v - vMin) / vRng) * (yBot - yTop);
 
