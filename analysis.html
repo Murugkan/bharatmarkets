@@ -1906,13 +1906,10 @@ function drawCandlestick(s){
   const W2=Math.max(wrap?wrap.offsetWidth:0, cv.offsetWidth, 280);
   const H2=Math.max(wrap?wrap.offsetHeight:0, cv.offsetHeight, 200);
   const dpr=window.devicePixelRatio||1;
-  // Only resize canvas if dimensions changed — resizing clears canvas and forces re-layout
-  if(cv.width !== W2*dpr || cv.height !== H2*dpr){
-    cv.width=W2*dpr; cv.height=H2*dpr;
-    cv.style.width=W2+'px'; cv.style.height=H2+'px';
-  }
+  cv.width=W2*dpr; cv.height=H2*dpr;
+  cv.style.width=W2+'px'; cv.style.height=H2+'px';
   const ctx=cv.getContext('2d');
-  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.scale(dpr,dpr);
   ctx.imageSmoothingEnabled=false;
 
   // Wire click/touch → tooltip (module-scope handleChartClick)
@@ -2298,12 +2295,10 @@ function drawVolume(s){
   const W2=Math.max(wrap?wrap.offsetWidth:0, 280);
   const H2=Math.max(wrap?wrap.offsetHeight:0, 100);
   const dpr=window.devicePixelRatio||1;
-  if(cv.width !== W2*dpr || cv.height !== H2*dpr){
-    cv.width=W2*dpr; cv.height=H2*dpr;
-    cv.style.width=W2+'px'; cv.style.height=H2+'px';
-  }
+  cv.width=W2*dpr; cv.height=H2*dpr;
+  cv.style.width=W2+'px'; cv.style.height=H2+'px';
   const ctx=cv.getContext('2d');
-  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.scale(dpr,dpr);
   ctx.imageSmoothingEnabled=false;
 
   const candles=getSlicedCandles(s, W2);
@@ -2639,17 +2634,9 @@ function setupChartInteraction(){
   if(setupChartInteraction._initializedFor === canvas) return;
   setupChartInteraction._initializedFor = canvas;
   const t={lastDist:0,isPanning:false,startX:0,startY:0,startPan:0,startYPan:0};
-  let _rafPending = false;
-  const go=()=>{
-    if(_rafPending) return;
-    _rafPending = true;
-    requestAnimationFrame(()=>{
-      _rafPending = false;
-      if(currentStock) { scheduleTACharts._pending=false; scheduleTACharts(currentStock); }
-    });
-  };
+  let lastT=0;
+  const go=()=>{const n=performance.now();if(n-lastT>=16){scheduleTACharts(currentStock);lastT=n;}};
   const bpp=()=>{const w=canvas.offsetWidth||320;return Math.max(10,Math.round(Math.max(20,Math.floor((w-60)/7))/S.chartZoom))/(w-60);};
-  // vpp: fraction of price range per pixel of drag. 0.003 = 100px drag shifts 30% of range.
   const vpp=()=>0.001;
 
   canvas.addEventListener('mousedown',e=>{t.isPanning=true;t.startX=e.clientX;t.startY=e.clientY;t.startPan=S.panOffset;t.startYPan=S.yPanOffset||0;},{passive:true});
