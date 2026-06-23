@@ -1,42 +1,42 @@
 name: Fetch eq-ltp & indices
 
 on:
- schedule:
-   # Every 50 min, 9:20 AM – 4:00 PM IST (Mon–Fri)
-   # IST = UTC + 5:30; times below are UTC
-   - cron: '50 3 * * 1-5'   # 09:20 IST
-   - cron: '40 4 * * 1-5'   # 10:10 IST
-   - cron: '30 5 * * 1-5'   # 11:00 IST
-   - cron: '20 6 * * 1-5'   # 11:50 IST
-   - cron: '10 7 * * 1-5'   # 12:40 IST
-   - cron: '0 8 * * 1-5'    # 13:30 IST
-   - cron: '50 8 * * 1-5'   # 14:20 IST
-   - cron: '40 9 * * 1-5'   # 15:10 IST
-   - cron: '30 10 * * 1-5'  # 16:00 IST
- workflow_dispatch:
+  schedule:
+    # Every 50 min, 9:20 AM – 4:00 PM IST (Mon–Fri)
+    # IST = UTC + 5:30; times below are UTC
+    - cron: '50 3 * * 1-5'   # 09:20 IST
+    - cron: '40 4 * * 1-5'   # 10:10 IST
+    - cron: '30 5 * * 1-5'   # 11:00 IST
+    - cron: '20 6 * * 1-5'   # 11:50 IST
+    - cron: '10 7 * * 1-5'   # 12:40 IST
+    - cron: '0 8 * * 1-5'    # 13:30 IST
+    - cron: '50 8 * * 1-5'   # 14:20 IST
+    - cron: '40 9 * * 1-5'   # 15:10 IST
+    - cron: '30 10 * * 1-5'  # 16:00 IST
+  workflow_dispatch:
 
 env:
- FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
- fetch-prices:
-   name: Fetch Live Price & index
-   runs-on: ubuntu-latest
-   permissions:
-     contents: write
-   steps:
-     - uses: actions/checkout@v6
-       with: {ref: main}
-     - uses: actions/setup-python@v6
-       with: {python-version: '3.12'}
-     - run: pip install yfinance requests beautifulsoup4 -q
-     - name: Fetch prices
-       run: python fetch_ltp.py
-     - name: Commit
-       run: |
-         git config user.name  "github-actions[bot]"
-         git config user.email "github-actions[bot]@users.noreply.github.com"
-         git add data/ltp.json data/sector_indices.json data/unified-symbols.json data/logs/fetch_ltp.log || true
-         git diff --staged --quiet && echo "No changes" && exit 0
-         git commit -m "data: ltp $(date -u +'%H:%M UTC') [skip ci]"
-         for i in 1 2 3; do git pull --rebase origin main && git push && break; sleep 5; done
+  fetch-prices:
+    name: Fetch Live Price & index
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with: {ref: main}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install yfinance requests beautifulsoup4 -q
+      - name: Fetch prices
+        run: python fetch_ltp.py
+      - name: Commit
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/ltp.json data/sector_indices.json data/unified-symbols.json data/logs/fetch_ltp.log || true
+          git diff --staged --quiet && echo "No changes" && exit 0
+          git commit -m "data: ltp $(date -u +'%H:%M UTC') [skip ci]"
+          for i in 1 2 3; do git pull --rebase origin main && git push && break; sleep 5; done
