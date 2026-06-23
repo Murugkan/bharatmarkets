@@ -2182,13 +2182,8 @@ function drawCandlestick(s){
     const vRng = vMax - vMin || 1;
     const yTop = PAD.t + 4, yBot = H - PAD.b - 16;
     const kpiY = v => yBot - ((v - vMin) / vRng) * (yBot - yTop) + panPx;
-    // DEBUG: draw a red dot at the raw midpoint + panPx to confirm pan is applied
-    ctx.fillStyle='red'; ctx.beginPath(); ctx.arc(W/2, (yTop+yBot)/2 + panPx, 6, 0, Math.PI*2); ctx.fill();
 
     ctx.save();
-    ctx.beginPath();
-    ctx.rect(PAD.l, PAD.t, cW, H - PAD.t - PAD.b);
-    ctx.clip();
     ctx.strokeStyle = col; ctx.lineWidth = 1.5; ctx.globalAlpha = 0.9;
 
     if(drawLine){
@@ -2233,11 +2228,6 @@ function drawCandlestick(s){
       ctx.fillText(e.message, cv.width/2, cv.height/2 + 20);
     }
   }
-
-  // DEBUG: show pan state — remove after confirming pan works
-  ctx.fillStyle='rgba(255,255,0,0.9)';
-  ctx.font='bold 11px monospace';ctx.textAlign='left';ctx.textBaseline='top';
-  ctx.fillText('yPan='+((S.yPanOffset||0).toFixed(3))+' panPx='+Math.round(panPx)+' zoom='+((S.yAxisZoom||1).toFixed(2)), PAD.l+4, PAD.t+4);
 
   // ── End pan — fixed UI elements drawn below ──
 
