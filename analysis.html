@@ -2182,8 +2182,6 @@ function drawCandlestick(s){
 
     const drawLine = pts.length >= 2;
 
-    // Map KPI values into the same visible price window as candles (vMx/vMn)
-    // so KPI lines pan and zoom in sync with price bars.
     const vals = pts.map(p=>p.v);
     const vMin = Math.min(...vals)*0.92, vMax = Math.max(...vals)*1.08;
     const vRng = vMax - vMin || 1;
@@ -2191,9 +2189,9 @@ function drawCandlestick(s){
     const kpiY = v => yBot - ((v - vMin) / vRng) * (yBot - yTop);
 
     ctx.save();
-    // Clip lines/fills to chart area only — prevent bleeding into right axis
+    // Clip rect offset by -panPx to stay at screen position despite translate
     ctx.beginPath();
-    ctx.rect(PAD.l, PAD.t, cW, H - PAD.t - PAD.b);
+    ctx.rect(PAD.l, PAD.t - panPx, cW, H - PAD.t - PAD.b);
     ctx.clip();
     ctx.strokeStyle = col; ctx.lineWidth = 1.5; ctx.globalAlpha = 0.9;
 
