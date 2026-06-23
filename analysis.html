@@ -1999,8 +1999,7 @@ function drawCandlestick(s){
   const zMx = mid + rng / 2;
   const zMn = mid - rng / 2;
 
-  // toY uses the UNSHIFTED window — ctx.translate handles vertical pan
-  const toY = p => PAD.t + ((zMx - p) / rng) * cH;
+  const toY = p => PAD.t + ((zMx - p) / rng) * cH + panPx;
   const barX = i => PAD.l + i*gap + gap/2;
 
   // panPx: canvas translate amount — negative = content moves up
@@ -2012,10 +2011,6 @@ function drawCandlestick(s){
   // Background
   ctx.fillStyle='#070c18';
   ctx.fillRect(0,0,W,H);
-
-  // Apply vertical pan as a canvas translate — all chart content shifts together
-  ctx.save();
-  ctx.translate(0, panPx);
 
   // Grid lines — horizontal
   for(let i=0;i<=8;i++){
@@ -2186,12 +2181,11 @@ function drawCandlestick(s){
     const vMin = Math.min(...vals)*0.92, vMax = Math.max(...vals)*1.08;
     const vRng = vMax - vMin || 1;
     const yTop = PAD.t + 4, yBot = H - PAD.b - 16;
-    const kpiY = v => yBot - ((v - vMin) / vRng) * (yBot - yTop);
+    const kpiY = v => yBot - ((v - vMin) / vRng) * (yBot - yTop) + panPx;
 
     ctx.save();
-    // Clip rect offset by -panPx to stay at screen position despite translate
     ctx.beginPath();
-    ctx.rect(PAD.l, PAD.t - panPx, cW, H - PAD.t - PAD.b);
+    ctx.rect(PAD.l, PAD.t, cW, H - PAD.t - PAD.b);
     ctx.clip();
     ctx.strokeStyle = col; ctx.lineWidth = 1.5; ctx.globalAlpha = 0.9;
 
@@ -2243,8 +2237,7 @@ function drawCandlestick(s){
   ctx.font='bold 11px monospace';ctx.textAlign='left';ctx.textBaseline='top';
   ctx.fillText('yPan='+((S.yPanOffset||0).toFixed(3))+' panPx='+Math.round(panPx)+' zoom='+((S.yAxisZoom||1).toFixed(2)), PAD.l+4, PAD.t+4);
 
-  // ── End pan translate — fixed UI elements drawn below ──
-  ctx.restore();
+  // ── End pan — fixed UI elements drawn below ──
 
   // Right axis separator
   ctx.fillStyle='rgba(7,12,24,.8)';
@@ -2265,7 +2258,7 @@ function drawCandlestick(s){
   // LTP price badge on right axis
   const _ltpFixed = resolveField(s, 'ltp');
   if(_ltpFixed){
-    const lastY = toY(_ltpFixed) + panPx;
+    const lastY = toY(_ltpFixed);
     const bull = candles.length && _ltpFixed >= candles[0].c;
     ctx.fillStyle=bull?'#00d084':'#ff3b5c';
     ctx.font='bold 9px JetBrains Mono,monospace';ctx.textAlign='right';
