@@ -1018,7 +1018,7 @@ function renderTab(tab) {
                 <div style="font-size:11px;font-weight:800;color:${retColor(v)}">${fmtRet(v)}</div>
               </div>`).join('')}
           </div>
-          <div id="chart-wrap" style="position:relative;width:100%;background:var(--s1);touch-action:manipulation"><canvas id="cv-candle" style="display:block;width:100%;height:100%;touch-action:manipulation"></canvas></div>
+          <div id="chart-wrap" style="position:relative;width:100%;background:var(--s1);touch-action:pan-x"><canvas id="cv-candle" style="display:block;width:100%;height:100%;touch-action:none"></canvas></div>
         </div>`;
         document.getElementById('content').innerHTML = html;
         setTimeout(() => { canvasLoadAndDrawChart(); }, 200);
@@ -1061,9 +1061,9 @@ function renderTab(tab) {
             ${[{k:'promoter',c:'#fbbf24',l:'Prom%'},{k:'roce',c:'#c084fc',l:'ROCE%'},{k:'divpayout',c:'#60a5fa',l:'DivPay%'}].map(o=>`<label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" id="kpi-${o.k}" ${S.kpiVis[o.k]?'checked':''} onchange="toggleKPI('${o.k}')" style="accent-color:${o.c};width:12px;height:12px"><span style="font-size:9px;color:${o.c};font-weight:700">${o.l}</span></label>`).join('')}
           </div>
           <div style="position:relative;background:var(--s1);font-size:0;line-height:0">
-            <div id="chart-wrap" style="position:relative;width:100%;touch-action:manipulation"><canvas id="cv-candle" style="display:block;width:100%;height:100%;touch-action:manipulation"></canvas></div>
+            <div id="chart-wrap" style="position:relative;width:100%;touch-action:pan-x"><canvas id="cv-candle" style="display:block;width:100%;height:100%;touch-action:none"></canvas></div>
             <div id="cv-debug" style="position:absolute;top:4px;left:8px;font-size:11px;font-weight:bold;color:yellow;background:rgba(0,0,0,.7);padding:2px 6px;border-radius:3px;z-index:20;font-family:monospace;pointer-events:none"></div>
-            ${S.maVis.vol ? `<div id="vol-wrap" style="position:relative;width:100%;border-top:1px solid var(--b1);touch-action:manipulation"><canvas id="cv-vol" style="display:block;width:100%;height:100%;touch-action:manipulation"></canvas></div>` : ''}
+            ${S.maVis.vol ? `<div id="vol-wrap" style="position:relative;width:100%;border-top:1px solid var(--b1);touch-action:pan-x"><canvas id="cv-vol" style="display:block;width:100%;height:100%;touch-action:none"></canvas></div>` : ''}
           </div>
         </div>`;
         document.getElementById('content').innerHTML = html;
@@ -2691,6 +2691,7 @@ function setupChartInteraction(){
         t.panAxis = Math.abs(dx) > Math.abs(dy)*2 ? 'x' : 'y';
       }
       if(t.panAxis==='x') S.panOffset=Math.max(0,t.startPan-Math.round(dx*bpp()));
+      else if(t.panAxis==='y') S.yPanOffset=t.startYPan+dy*vpp();
       go();
       e.preventDefault();
     }
