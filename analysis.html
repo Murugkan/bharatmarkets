@@ -1062,6 +1062,7 @@ function renderTab(tab) {
           </div>
           <div style="position:relative;background:var(--s1);font-size:0;line-height:0">
             <div id="chart-wrap" style="position:relative;width:100%;touch-action:manipulation"><canvas id="cv-candle" style="display:block;width:100%;height:100%;touch-action:manipulation"></canvas></div>
+            <div id="cv-debug" style="position:absolute;top:4px;left:8px;font-size:11px;font-weight:bold;color:yellow;background:rgba(0,0,0,.7);padding:2px 6px;border-radius:3px;z-index:20;font-family:monospace;pointer-events:none"></div>
             ${S.maVis.vol ? `<div id="vol-wrap" style="position:relative;width:100%;border-top:1px solid var(--b1);touch-action:manipulation"><canvas id="cv-vol" style="display:block;width:100%;height:100%;touch-action:manipulation"></canvas></div>` : ''}
           </div>
         </div>`;
@@ -2181,7 +2182,10 @@ function drawCandlestick(s){
     const vRng = vMax - vMin || 1;
     const yTop = PAD.t + 4, yBot = H - PAD.b - 16;
     const kpiY = v => yBot - ((v - vMin) / vRng) * (yBot - yTop) + panPx;
-    if(pts.length) console.log('KPI',k,'panPx=',panPx,'kpiY sample=',Math.round(kpiY(pts[0].v)));
+    if(pts.length){
+      const dbg = document.getElementById('cv-debug');
+      if(dbg) dbg.textContent = 'panPx='+Math.round(panPx)+' kpiY='+Math.round(kpiY(pts[0].v))+' yPan='+((S.yPanOffset||0).toFixed(3))+' k='+k;
+    }
 
     ctx.save();
     ctx.strokeStyle = col; ctx.lineWidth = 1.5; ctx.globalAlpha = 0.9;
