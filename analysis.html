@@ -1993,8 +1993,7 @@ function drawCandlestick(s){
   }
   if(mn===Infinity || mx===-Infinity){ mn=0; mx=1; }
   const rng = mx - mn || 1;
-  const mid = (mx + mn) / 2;
-  // yPanOffset shifts the visible window up/down (fraction of rng)
+  // yPanOffset shifts the visible window up/down in price units (fraction of rng)
   const yShift = (S.yPanOffset||0) * rng;
   const vMx = mx - yShift;
   const vMn = mn - yShift;
@@ -2041,6 +2040,7 @@ function drawCandlestick(s){
   for(let i=0;i<=8;i++){
     const y=PAD.t+(cH/8)*i;
     const price=vMx-(vMx-vMn)*(i/8);
+    ctx.fillStyle='rgba(255,255,255,1)';
     ctx.font='bold 11px JetBrains Mono,monospace';ctx.textAlign='right';ctx.textBaseline='middle';
     ctx.fillText(Math.round(price).toLocaleString('en-IN'),W-6,y);
   }
@@ -2229,11 +2229,12 @@ function drawCandlestick(s){
     // Map KPI values into the same visible price window as candles (vMx/vMn)
     // so KPI lines pan and zoom in sync with price bars.
     const vals = pts.map(p=>p.v);
-    const vMin = Math.min(...vals), vMax = Math.max(...vals);
+    const vMin = Math.min(...vals)*0.92, vMax = Math.max(...vals)*1.08;
     const vRng = vMax - vMin || 1;
-    // Normalise KPI value to [0,1] then map into visible price window
-    const kpiToPrice = v => vMn + ((v - vMin) / vRng) * (vMx - vMn);
-    const kpiY = v => toY(kpiToPrice(v));
+    // Shift KPI pixel bounds by same amount as price pan so they track together
+    const panPx = (S.yPanOffset||0) * cH;
+    const yTop = PAD.t + 4 + panPx, yBot = H - PAD.b - 16 + panPx;
+    const kpiY = v => yBot - ((v - vMin) / vRng) * (yBot - yTop);
 
     ctx.save();
     // Clip lines/fills to chart area only — prevent bleeding into right axis
