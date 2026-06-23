@@ -1992,16 +1992,15 @@ function drawCandlestick(s){
     return;
   }
   if(mn===Infinity || mx===-Infinity){ mn=0; mx=1; }
-  const rng=mx-mn||1;
-  // Vertical pan: shift the visible price window up/down
+  const rng=(mx-mn||1) / (S.yAxisZoom||1);
+  const mid=(mx+mn)/2;
+  // Vertical pan shifts the centre of the visible window
   const yShift = (S.yPanOffset||0) * rng;
-  mn -= yShift; mx -= yShift;
+  const vMx = mid + rng/2 - yShift;
+  const vMn = mid - rng/2 - yShift;
 
-  // ✅ Y-axis labels track the shifted window
-  const toY=p=>PAD.t+((mx-p)/rng)*cH;
-  
-  // ✅ VERTICAL BAR ZOOM: Uses your VERTICAL PINCH GESTURE (S.yAxisZoom)
-  const barHeightZoom = S.yAxisZoom || 1.0;  // 1.0 = normal, 2.0 = 2x taller
+  const toY=p=>PAD.t+((vMx-p)/rng)*cH;
+
   const barX = i => PAD.l + i*gap + gap/2;
 
   // Background
@@ -2036,7 +2035,7 @@ function drawCandlestick(s){
   // Price labels (draw AFTER background so they're visible on top)
   for(let i=0;i<=8;i++){
     const y=PAD.t+(cH/8)*i;
-    const price=mx-(mx-mn)*(i/8);
+    const price=vMx-(vMx-vMn)*(i/8);
     ctx.fillStyle='rgba(255,255,255,1)';
     ctx.font='bold 11px JetBrains Mono,monospace';ctx.textAlign='right';ctx.textBaseline='middle';
     ctx.fillText(Math.round(price).toLocaleString('en-IN'),W-6,y);
@@ -2054,17 +2053,9 @@ function drawCandlestick(s){
   candles.forEach((c,i)=>{
     const bull=c.c>=c.o;
     const cx=barX(i);
-    const yHigh=toY(c.h), yLow=toY(c.l);
-    const yOpen=toY(c.o), yClose=toY(c.c);
+    const zHigh=toY(c.h), zLow=toY(c.l);
+    const zOpen=toY(c.o), zClose=toY(c.c);
 
-    // ✅ Apply bar height zoom around the high-low midpoint (keeps zoom behavior consistent with prior candle version)
-    const midY=(yHigh+yLow)/2;
-    const halfRange=Math.max(1,(yLow-yHigh)/2)*barHeightZoom;
-    const zHigh=midY-halfRange, zLow=midY+halfRange;
-    const zOpen=midY-((midY-yOpen)*barHeightZoom);
-    const zClose=midY-((midY-yClose)*barHeightZoom);
-
-    // ✅ Track bar for click detection — bounding box spans full high-low range
     candlestickBars.push({
       date: c.d,
       open: c.o,
