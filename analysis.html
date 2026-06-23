@@ -184,7 +184,6 @@ const S = {
   panOffset: 0,
   chartZoom: 1,
   yAxisZoom: 1,       // ✅ Vertical zoom (bar height)
-  yPanOffset: 0,      // Vertical pan (price shift fraction of range)
   panStart: null,     // Pan start position
   financialSource: { accounting: 'consolidated', frequency: 'annual' },  // ✅ NEW: User selected data source (consolidated/standalone, annual/quarterly)
   kpiControlsExpanded: false  // chart KPI/filter rows collapsed by default to maximize chart space
@@ -1993,9 +1992,6 @@ function drawCandlestick(s){
   }
   if(mn===Infinity || mx===-Infinity){ mn=0; mx=1; }
   const rng=mx-mn||1;
-  // Vertical pan: shift the visible price window up/down
-  const yShift = (S.yPanOffset||0) * rng;
-  mn += yShift; mx += yShift;
 
   // ✅ Y-axis labels use FULL range - they stay stable, don't move
   const toY=p=>PAD.t+((mx-p)/rng)*cH;
@@ -2554,7 +2550,7 @@ function setNavInterval(iv){
   if(S.navInterval === iv) return;
   S.navInterval = iv;
   S.panOffset = 0;
-  S.yPanOffset = 0;
+  S.yAxisZoom = 1;
   renderTab('canvas'); // re-render so the D/W/M button highlight updates too
 }
 function canvasToggleMA(key){
@@ -2648,13 +2644,13 @@ function setupChartInteraction(){
   const go=()=>{const n=performance.now();if(n-lastT>=32){scheduleTACharts(currentStock);lastT=n;}};
   const bpp=()=>{const w=canvas.offsetWidth||320;return Math.max(10,Math.round(Math.max(20,Math.floor((w-60)/7))/S.chartZoom))/(w-60);};
   // vpp: fraction of price range per pixel of drag. 0.003 = 100px drag shifts 30% of range.
-  const vpp=()=>0.003;
+  const vpp=()=>0.005;
 
-  canvas.addEventListener('mousedown',e=>{t.isPanning=true;t.startX=e.clientX;t.startY=e.clientY;t.startPan=S.panOffset;t.startYPan=S.yPanOffset||0;},{passive:true});
+  canvas.addEventListener('mousedown',e=>{t.isPanning=true;t.startX=e.clientX;t.startY=e.clientY;t.startPan=S.panOffset;t.startYPan=S.yAxisZoom||1;},{passive:true});
   document.addEventListener('mousemove',e=>{
     if(!t.isPanning||!currentStock)return;
     S.panOffset=Math.max(0,t.startPan-Math.round((e.clientX-t.startX)*bpp()));
-    S.yPanOffset=t.startYPan-(e.clientY-t.startY)*vpp();
+    S.yAxisZoom=Math.max(0.3,Math.min(5,(t.startYPan||1)-(e.clientY-t.startY)*vpp()));
     go();
   },{passive:true});
   document.addEventListener('mouseup',()=>{t.isPanning=false;},{passive:true});
@@ -2668,7 +2664,7 @@ function setupChartInteraction(){
     if(e.touches.length===2){
       const dx=e.touches[0].clientX-e.touches[1].clientX,dy=e.touches[0].clientY-e.touches[1].clientY;
       t.lastDist=Math.sqrt(dx*dx+dy*dy);t.isPanning=false;t.panAxis=null;
-    }else{t.isPanning=true;t.startX=e.touches[0].clientX;t.startY=e.touches[0].clientY;t.startPan=S.panOffset;t.startYPan=S.yPanOffset||0;t.lastDist=0;t.panAxis=null;}
+    }else{t.isPanning=true;t.startX=e.touches[0].clientX;t.startY=e.touches[0].clientY;t.startPan=S.panOffset;t.startYPan=S.yAxisZoom||1;t.lastDist=0;t.panAxis=null;}
   };
   const tm=e=>{
     if(e.touches.length===2){
@@ -2692,7 +2688,7 @@ function setupChartInteraction(){
         t.panAxis = Math.abs(dx)>Math.abs(dy) ? 'x' : 'y';
       }
       if(t.panAxis==='x') S.panOffset=Math.max(0,t.startPan-Math.round(dx*bpp()));
-      else if(t.panAxis==='y') S.yPanOffset=t.startYPan-dy*vpp();
+      else if(t.panAxis==='y') S.yAxisZoom=Math.max(0.3,Math.min(5,(t.startYPan||1)-dy*0.005));
       go();
       e.preventDefault();
     }
