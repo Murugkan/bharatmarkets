@@ -2647,14 +2647,14 @@ function setupChartInteraction(){
   let lastT=0;
   const go=()=>{const n=performance.now();if(n-lastT>=32){scheduleTACharts(currentStock);lastT=n;}};
   const bpp=()=>{const w=canvas.offsetWidth||320;return Math.max(10,Math.round(Math.max(20,Math.floor((w-60)/7))/S.chartZoom))/(w-60);};
-  // Vertical pan: pixels-per-price-fraction (1px moves price by this fraction of range)
-  const vpp=()=>1/(canvas.offsetHeight||400);
+  // vpp: fraction of price range per pixel of drag. 0.003 = 100px drag shifts 30% of range.
+  const vpp=()=>0.003;
 
   canvas.addEventListener('mousedown',e=>{t.isPanning=true;t.startX=e.clientX;t.startY=e.clientY;t.startPan=S.panOffset;t.startYPan=S.yPanOffset||0;},{passive:true});
   document.addEventListener('mousemove',e=>{
     if(!t.isPanning||!currentStock)return;
     S.panOffset=Math.max(0,t.startPan-Math.round((e.clientX-t.startX)*bpp()));
-    S.yPanOffset=t.startYPan+(e.clientY-t.startY)*vpp();
+    S.yPanOffset=t.startYPan-(e.clientY-t.startY)*vpp();
     go();
   },{passive:true});
   document.addEventListener('mouseup',()=>{t.isPanning=false;},{passive:true});
@@ -2667,8 +2667,8 @@ function setupChartInteraction(){
   const ts=e=>{
     if(e.touches.length===2){
       const dx=e.touches[0].clientX-e.touches[1].clientX,dy=e.touches[0].clientY-e.touches[1].clientY;
-      t.lastDist=Math.sqrt(dx*dx+dy*dy);t.isPanning=false;
-    }else{t.isPanning=true;t.startX=e.touches[0].clientX;t.startY=e.touches[0].clientY;t.startPan=S.panOffset;t.startYPan=S.yPanOffset||0;t.lastDist=0;}
+      t.lastDist=Math.sqrt(dx*dx+dy*dy);t.isPanning=false;t.panAxis=null;
+    }else{t.isPanning=true;t.startX=e.touches[0].clientX;t.startY=e.touches[0].clientY;t.startPan=S.panOffset;t.startYPan=S.yPanOffset||0;t.lastDist=0;t.panAxis=null;}
   };
   const tm=e=>{
     if(e.touches.length===2){
@@ -2685,13 +2685,19 @@ function setupChartInteraction(){
       }
       t.lastDist=d; e.preventDefault();
     }else if(t.isPanning&&currentStock){
-      S.panOffset=Math.max(0,t.startPan-Math.round((e.touches[0].clientX-t.startX)*bpp()));
-      S.yPanOffset=t.startYPan+(e.touches[0].clientY-t.startY)*vpp();
+      const dx=e.touches[0].clientX-t.startX;
+      const dy=e.touches[0].clientY-t.startY;
+      // Lock axis after 6px movement
+      if(!t.panAxis && (Math.abs(dx)>6||Math.abs(dy)>6)){
+        t.panAxis = Math.abs(dx)>Math.abs(dy) ? 'x' : 'y';
+      }
+      if(t.panAxis==='x') S.panOffset=Math.max(0,t.startPan-Math.round(dx*bpp()));
+      else if(t.panAxis==='y') S.yPanOffset=t.startYPan-dy*vpp();
       go();
       e.preventDefault();
     }
   };
-  const te=()=>{t.isPanning=false;t.lastDist=0;};
+  const te=()=>{t.isPanning=false;t.lastDist=0;t.panAxis=null;};
   canvas.ontouchstart=ts;canvas.addEventListener('touchmove',tm,{passive:false});canvas.ontouchend=te;
   const v=document.getElementById('cv-vol');
   if(v){v.ontouchstart=ts;v.addEventListener('touchmove',tm,{passive:false});v.ontouchend=te;}
