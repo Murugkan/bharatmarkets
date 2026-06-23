@@ -2177,8 +2177,13 @@ function drawCandlestick(s){
     const drawLine = pts.length >= 2;
 
     const vals = pts.map(p=>p.v);
-    const vMin = Math.min(...vals)*0.92, vMax = Math.max(...vals)*1.08;
-    const vRng = vMax - vMin || 1;
+    const rawMin = Math.min(...vals)*0.92, rawMax = Math.max(...vals)*1.08;
+    const rawMid = (rawMin + rawMax) / 2;
+    // Apply same yAxisZoom as price bars — narrows range around midpoint
+    const kpiRng = (rawMax - rawMin || 1) / (S.yAxisZoom || 1);
+    const vMin = rawMid - kpiRng / 2;
+    const vMax = rawMid + kpiRng / 2;
+    const vRng = kpiRng;
     const yTop = PAD.t, yBot = PAD.t + cH;
     const kpiY = v => yTop + (1 - (v - vMin) / vRng) * (yBot - yTop) + panPx;
 
