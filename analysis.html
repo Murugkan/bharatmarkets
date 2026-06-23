@@ -2219,14 +2219,14 @@ function drawCandlestick(s){
 
     const drawLine = pts.length >= 2;
 
-    // Map values to Y using a DEDICATED right-side scale for this KPI
-    // This avoids the problem of small PE values (eg 18x) mapping to price range (eg 500-800)
+    // Map KPI values into the same visible price window as candles (vMx/vMn)
+    // so KPI lines pan and zoom in sync with price bars.
     const vals = pts.map(p=>p.v);
-    const vMin = Math.min(...vals)*0.92, vMax = Math.max(...vals)*1.08;
+    const vMin = Math.min(...vals), vMax = Math.max(...vals);
     const vRng = vMax - vMin || 1;
-    // Use top 80% of chart height, leaving room for x-axis labels at bottom
-    const yTop = PAD.t + 4, yBot = H - PAD.b - 16;
-    const kpiY = v => yBot - ((v - vMin) / vRng) * (yBot - yTop);
+    // Normalise KPI value to [0,1] then map into visible price window
+    const kpiToPrice = v => vMn + ((v - vMin) / vRng) * (vMx - vMn);
+    const kpiY = v => toY(kpiToPrice(v));
 
     ctx.save();
     // Clip lines/fills to chart area only — prevent bleeding into right axis
