@@ -1992,19 +1992,16 @@ function drawCandlestick(s){
     return;
   }
   if(mn===Infinity || mx===-Infinity){ mn=0; mx=1; }
-  const rng = mx - mn || 1;
-  // yPanOffset shifts the visible window up/down in price units (fraction of rng)
-  const yShift = (S.yPanOffset||0) * rng;
-  const vMx = mx - yShift;
-  const vMn = mn - yShift;
+  const baseRng = mx - mn || 1;
+  const mid = (mx + mn) / 2;
+  // yAxisZoom: >1 = zoom in (narrower range = taller bars), <1 = zoom out
+  const rng = baseRng / (S.yAxisZoom || 1);
+  // yPanOffset: fraction of rng to shift the window centre up/down
+  const yShift = (S.yPanOffset || 0) * rng;
+  const vMx = mid + rng / 2 - yShift;
+  const vMn = mid - rng / 2 - yShift;
 
-  // toY maps price to canvas y using the shifted window
   const toY = p => PAD.t + ((vMx - p) / rng) * cH;
-
-  // yAxisZoom scales bar bodies from their midpoint (pinch gesture)
-  const barHeightZoom = S.yAxisZoom || 1.0;
-  const zoomBar = (yMid, y) => yMid + (y - yMid) * barHeightZoom;
-
   const barX = i => PAD.l + i*gap + gap/2;
 
   // Background
@@ -2057,11 +2054,8 @@ function drawCandlestick(s){
   candles.forEach((c,i)=>{
     const bull=c.c>=c.o;
     const cx=barX(i);
-    const yHigh=toY(c.h), yLow=toY(c.l);
-    const yOpen=toY(c.o), yClose=toY(c.c);
-    const yMid=(yHigh+yLow)/2;
-    const zHigh=zoomBar(yMid,yHigh), zLow=zoomBar(yMid,yLow);
-    const zOpen=zoomBar(yMid,yOpen), zClose=zoomBar(yMid,yClose);
+    const zHigh=toY(c.h), zLow=toY(c.l);
+    const zOpen=toY(c.o), zClose=toY(c.c);
 
     candlestickBars.push({
       date: c.d,
@@ -2231,7 +2225,7 @@ function drawCandlestick(s){
     const vals = pts.map(p=>p.v);
     const vMin = Math.min(...vals)*0.92, vMax = Math.max(...vals)*1.08;
     const vRng = vMax - vMin || 1;
-    // Shift KPI pixel bounds by same amount as price pan so they track together
+    // Shift KPI pixel bounds proportionally with price pan
     const panPx = (S.yPanOffset||0) * cH;
     const yTop = PAD.t + 4 + panPx, yBot = H - PAD.b - 16 + panPx;
     const kpiY = v => yBot - ((v - vMin) / vRng) * (yBot - yTop);
