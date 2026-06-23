@@ -1477,7 +1477,7 @@ loadStock();
 // ════════════════════════════════════════════════════════
 
 function scheduleChartRedraw(){
-  scheduleTACharts._pending = false;
+  if(scheduleTACharts._raf){ cancelAnimationFrame(scheduleTACharts._raf); scheduleTACharts._raf=null; }
   if(scheduleChartRedraw._t) clearTimeout(scheduleChartRedraw._t);
   scheduleChartRedraw._t = setTimeout(()=>{scheduleChartRedraw._t=null;scheduleTACharts(currentStock);},16);
 }
@@ -1498,10 +1498,9 @@ function aggregateCandles(daily, interval){
 }
 
 function scheduleTACharts(s){
-  if(scheduleTACharts._pending) return;
-  scheduleTACharts._pending = true;
-  requestAnimationFrame(()=>{
-    scheduleTACharts._pending = false;
+  if(scheduleTACharts._raf) return;
+  scheduleTACharts._raf = requestAnimationFrame(()=>{
+    scheduleTACharts._raf = null;
     if(!s) return;
     try{
       if(isMutualFund(s)){
@@ -2652,8 +2651,7 @@ function setupChartInteraction(){
   if(setupChartInteraction._initializedFor === canvas) return;
   setupChartInteraction._initializedFor = canvas;
   const t={lastDist:0,isPanning:false,startX:0,startY:0,startPan:0,startYPan:0};
-  let lastT=0;
-  const go=()=>{const n=performance.now();if(n-lastT>=32){scheduleTACharts(currentStock);lastT=n;}};
+  const go=()=>{ scheduleTACharts(currentStock); };
   const bpp=()=>{const w=canvas.offsetWidth||320;return Math.max(10,Math.round(Math.max(20,Math.floor((w-60)/7))/S.chartZoom))/(w-60);};
   // Vertical pan: pixels-per-price-fraction (1px moves price by this fraction of range)
   const vpp=()=>1/(canvas.offsetHeight||400);
