@@ -1916,15 +1916,14 @@ function drawCandlestick(s){
   // ✅ Disable image smoothing to prevent blur when zoomed
   ctx.imageSmoothingEnabled = false;
 
-  // Wire click/touch → tooltip. addEventListener (not ontouchend=) so
-  // setupChartInteraction's touchend handler isn't overwritten on every redraw.
+  // Wire click/touch → tooltip (module-scope handleChartClick)
   cv.onclick = (e) => handleChartClick(e, cv, W2, H2);
   if(!cv._tooltipBound){
     cv._tooltipBound = true;
     cv.addEventListener('touchend',(e)=>{
       if(e.touches.length===0 && !chartInteraction.isPanning){
-        const touch=e.changedTouches[0];
-        handleChartClick(new MouseEvent('click',{clientX:touch.clientX,clientY:touch.clientY}),cv,W2,H2);
+        const t=e.changedTouches[0];
+        handleChartClick(new MouseEvent('click',{clientX:t.clientX,clientY:t.clientY}),cv,W2,H2);
       }
     },{passive:true});
   }
@@ -2675,11 +2674,10 @@ function setupChartInteraction(){
   },{passive:false});
 
   const ts=e=>{
-    e.preventDefault();
     if(e.touches.length===2){
       const dx=e.touches[0].clientX-e.touches[1].clientX,dy=e.touches[0].clientY-e.touches[1].clientY;
-      t.lastDist=Math.sqrt(dx*dx+dy*dy);t.isPanning=false;chartInteraction.isPanning=false;
-    }else{t.isPanning=true;chartInteraction.isPanning=true;t.startX=e.touches[0].clientX;t.startY=e.touches[0].clientY;t.startPan=S.panOffset;t.startYPan=S.yPanOffset||0;t.lastDist=0;}
+      t.lastDist=Math.sqrt(dx*dx+dy*dy);t.isPanning=false;
+    }else{t.isPanning=true;t.startX=e.touches[0].clientX;t.startY=e.touches[0].clientY;t.startPan=S.panOffset;t.startYPan=S.yPanOffset||0;t.lastDist=0;}
   };
   const tm=e=>{
     if(e.touches.length===2){
@@ -2705,8 +2703,6 @@ function setupChartInteraction(){
   const te=e=>{
     t.lastDist=0;
     if(e.touches.length===1){
-      // One finger remains after pinch — touchstart won't re-fire for it.
-      // Re-arm pan immediately from the remaining finger's position.
       t.isPanning=true; chartInteraction.isPanning=true;
       t.startX=e.touches[0].clientX; t.startY=e.touches[0].clientY;
       t.startPan=S.panOffset; t.startYPan=S.yPanOffset||0;
@@ -2714,19 +2710,17 @@ function setupChartInteraction(){
       t.isPanning=false; chartInteraction.isPanning=false;
     }
   };
-  // All four events via addEventListener (not property assignment).
-  // Property assignment (el.ontouchstart=fn, el.ontouchend=fn) can be silently
-  // overwritten by drawCandlestick which sets cv.ontouchend on every redraw —
-  // destroying te and breaking the pinch→pan re-arm.
-  const attach=el=>{
-    if(!el) return;
-    el.addEventListener('touchstart',  ts,{passive:false});
-    el.addEventListener('touchmove',   tm,{passive:false});
-    el.addEventListener('touchend',    te,{passive:true});
-    el.addEventListener('touchcancel', te,{passive:true});
-  };
-  attach(canvas);
-  attach(document.getElementById('cv-vol'));
+  canvas.addEventListener('touchstart', ts,{passive:false});
+  canvas.addEventListener('touchmove',  tm,{passive:false});
+  canvas.addEventListener('touchend',   te,{passive:true});
+  canvas.addEventListener('touchcancel',te,{passive:true});
+  const v=document.getElementById('cv-vol');
+  if(v){
+    v.addEventListener('touchstart', ts,{passive:false});
+    v.addEventListener('touchmove',  tm,{passive:false});
+    v.addEventListener('touchend',   te,{passive:true});
+    v.addEventListener('touchcancel',te,{passive:true});
+  }
 }
 // ════════════════════════════════════════════════════════
 // CHARTS TAB FUNCTION
