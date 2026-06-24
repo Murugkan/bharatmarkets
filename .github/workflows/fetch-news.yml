@@ -1,41 +1,39 @@
 name: Fetch Stock News
 
 env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+ FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 on:
-  schedule:
-    # 7:00 AM IST = 1:30 AM UTC
-    - cron: '30 1 * * *'
-    # 8:00 AM IST = 2:30 AM UTC
-    - cron: '30 2 * * *'
-    # 2:00 PM IST = 8:30 AM UTC
-    - cron: '30 8 * * *'
-    # 7:00 PM IST = 1:30 PM UTC
-    - cron: '30 13 * * *'
-  workflow_dispatch:
+ schedule:
+   # 6:00 AM IST = 0:30 AM UTC
+   - cron: '30 0 * * *'
+   # 7:00 AM IST = 1:30 AM UTC
+   - cron: '30 1 * * *'
+   # 1:00 PM IST = 7:30 AM UTC
+   - cron: '30 7 * * *'
+   # 6:00 PM IST = 12:30 PM UTC
+   - cron: '30 12 * * *'
+ workflow_dispatch:
 
 jobs:
-  fetch-news:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-        with: {ref: main}
+ fetch-news:
+   runs-on: ubuntu-latest
+   permissions:
+     contents: write
+   steps:
+     - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
+     - uses: actions/setup-python@v5
+       with:
+         python-version: '3.11'
 
-      - name: Fetch news
-        run: python fetch_news.py
+     - name: Fetch news
+       run: python fetch_news.py
 
-      - name: Commit and push
-        run: |
-          git config user.name  "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add data/news.json
-          git diff --staged --quiet && echo "No changes" && exit 0
-          git commit -m "chore: update news.json [skip ci]"
-          for i in 1 2 3; do git pull --rebase origin main && git push && break; sleep 5; done
+     - name: Commit and push
+       run: |
+         git config user.name  "github-actions[bot]"
+         git config user.email "github-actions[bot]@users.noreply.github.com"
+         git add data/news.json
+         git diff --staged --quiet || git commit -m "chore: update news.json [skip ci]"
+         git push
