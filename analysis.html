@@ -2657,8 +2657,6 @@ function setupChartInteraction(){
   setupChartInteraction._initializedFor = canvas;
   const t={lastDist:0,isPanning:false,startX:0,startY:0,startPan:0,startYPan:0};
   const go=()=>{ scheduleTACharts(currentStock); };
-  // Float bpp — no Math.round so every pixel accumulates. panOffset stored as
-  // float; getSlicedCandles floors it at array-index time.
   const bpp=()=>{const w=canvas.offsetWidth||320;return Math.max(20,Math.floor((w-60)/7))/S.chartZoom/(w-60);};
   const vpp=()=>1/(canvas.offsetHeight||400);
 
@@ -2704,7 +2702,6 @@ function setupChartInteraction(){
       t.lastDist=d;
     }else if(e.touches.length===1&&currentStock){
       if(!t.isPanning){
-        // Self-arm: touchstart may have been missed during heavy KPI render
         t.isPanning=true;chartInteraction.isPanning=true;
         t.startX=e.touches[0].clientX;t.startY=e.touches[0].clientY;
         t.startPan=S.panOffset;t.startYPan=S.yPanOffset||0;
@@ -2717,7 +2714,6 @@ function setupChartInteraction(){
   const te=e=>{
     t.lastDist=0;
     if(e.touches.length===1){
-      // One finger remains after pinch — re-arm pan immediately
       t.isPanning=true;chartInteraction.isPanning=true;
       t.startX=e.touches[0].clientX;t.startY=e.touches[0].clientY;
       t.startPan=S.panOffset;t.startYPan=S.yPanOffset||0;
