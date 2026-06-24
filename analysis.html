@@ -1916,7 +1916,6 @@ function drawCandlestick(s){
   // ✅ Disable image smoothing to prevent blur when zoomed
   ctx.imageSmoothingEnabled = false;
 
-  // Wire click/touch → tooltip (module-scope handleChartClick)
   cv.onclick = (e) => handleChartClick(e, cv, W2, H2);
   if(!cv._tooltipBound){
     cv._tooltipBound = true;
@@ -2677,7 +2676,10 @@ function setupChartInteraction(){
     if(e.touches.length===2){
       const dx=e.touches[0].clientX-e.touches[1].clientX,dy=e.touches[0].clientY-e.touches[1].clientY;
       t.lastDist=Math.sqrt(dx*dx+dy*dy);t.isPanning=false;
-    }else{t.isPanning=true;t.startX=e.touches[0].clientX;t.startY=e.touches[0].clientY;t.startPan=S.panOffset;t.startYPan=S.yPanOffset||0;t.lastDist=0;}
+    }else{
+      // Single touch — always arm pan (covers initial touch AND remaining finger after pinch)
+      t.isPanning=true;t.startX=e.touches[0].clientX;t.startY=e.touches[0].clientY;t.startPan=S.panOffset;t.startYPan=S.yPanOffset||0;t.lastDist=0;
+    }
   };
   const tm=e=>{
     if(e.touches.length===2){
@@ -2693,7 +2695,13 @@ function setupChartInteraction(){
         }
       }
       t.lastDist=d; e.preventDefault();
-    }else if(t.isPanning&&currentStock){
+    }else if(e.touches.length===1&&currentStock){
+      // Pan: allow even if isPanning flag not set — touchstart may have been
+      // throttled/dropped by browser during heavy KPI render after pinch-zoom.
+      // Re-arm from current finger position if startX was never set for this touch.
+      if(!t.isPanning){
+        t.isPanning=true;t.startX=e.touches[0].clientX;t.startY=e.touches[0].clientY;t.startPan=S.panOffset;t.startYPan=S.yPanOffset||0;
+      }
       S.panOffset=Math.max(0,t.startPan-Math.round((e.touches[0].clientX-t.startX)*bpp()));
       S.yPanOffset=t.startYPan+(e.touches[0].clientY-t.startY)*vpp();
       go();
@@ -2703,11 +2711,12 @@ function setupChartInteraction(){
   const te=e=>{
     t.lastDist=0;
     if(e.touches.length===1){
-      t.isPanning=true; chartInteraction.isPanning=true;
-      t.startX=e.touches[0].clientX; t.startY=e.touches[0].clientY;
-      t.startPan=S.panOffset; t.startYPan=S.yPanOffset||0;
+      // One finger remains after pinch — re-arm pan from it immediately
+      // without waiting for touchstart (which may never fire for it).
+      t.isPanning=true;t.startX=e.touches[0].clientX;t.startY=e.touches[0].clientY;
+      t.startPan=S.panOffset;t.startYPan=S.yPanOffset||0;
     }else{
-      t.isPanning=false; chartInteraction.isPanning=false;
+      t.isPanning=false;
     }
   };
   canvas.addEventListener('touchstart', ts,{passive:false});
