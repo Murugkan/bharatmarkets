@@ -1916,14 +1916,18 @@ function drawCandlestick(s){
   // ✅ Disable image smoothing to prevent blur when zoomed
   ctx.imageSmoothingEnabled = false;
 
-  // Wire click/touch → tooltip (module-scope handleChartClick)
+  // Wire click/touch → tooltip. Use addEventListener (not ontouchend=) so
+  // setupChartInteraction's touchend handler isn't overwritten on every redraw.
   cv.onclick = (e) => handleChartClick(e, cv, W2, H2);
-  cv.ontouchend = (e) => {
-    if(e.touches.length === 0 && !chartInteraction.isPanning) {
-      const t = e.changedTouches[0];
-      handleChartClick(new MouseEvent('click',{clientX:t.clientX,clientY:t.clientY}), cv, W2, H2);
-    }
-  };
+  if(!cv._tooltipBound){
+    cv._tooltipBound = true;
+    cv.addEventListener('touchend',(e)=>{
+      if(e.touches.length===0 && !chartInteraction.isPanning){
+        const t=e.changedTouches[0];
+        handleChartClick(new MouseEvent('click',{clientX:t.clientX,clientY:t.clientY}),cv,W2,H2);
+      }
+    },{passive:true});
+  }
 
   const candles=getSlicedCandles(s, W2);
   if(!candles.length){
@@ -2700,18 +2704,28 @@ function setupChartInteraction(){
   const te=e=>{
     t.lastDist=0;
     if(e.touches.length===1){
-      // One finger remains after pinch — touchstart won't re-fire for it,
-      // so re-arm pan from its current position now.
+      // One finger remains after pinch — touchstart won't re-fire for it.
+      // Re-arm pan from its current position now.
       t.isPanning=true;
       t.startX=e.touches[0].clientX; t.startY=e.touches[0].clientY;
       t.startPan=S.panOffset; t.startYPan=S.yPanOffset||0;
-    } else {
+    }else{
       t.isPanning=false;
     }
   };
-  canvas.ontouchstart=ts;canvas.addEventListener('touchmove',tm,{passive:false});canvas.ontouchend=te;
+  // Use addEventListener (not property assignment) so drawCandlestick's
+  // cv.ontouchend overwrite can't clobber these handlers.
+  canvas.addEventListener('touchstart', ts,{passive:false});
+  canvas.addEventListener('touchmove',  tm,{passive:false});
+  canvas.addEventListener('touchend',   te,{passive:true});
+  canvas.addEventListener('touchcancel',te,{passive:true});
   const v=document.getElementById('cv-vol');
-  if(v){v.ontouchstart=ts;v.addEventListener('touchmove',tm,{passive:false});v.ontouchend=te;}
+  if(v){
+    v.addEventListener('touchstart', ts,{passive:false});
+    v.addEventListener('touchmove',  tm,{passive:false});
+    v.addEventListener('touchend',   te,{passive:true});
+    v.addEventListener('touchcancel',te,{passive:true});
+  }
 }
 // ════════════════════════════════════════════════════════
 // CHARTS TAB FUNCTION
