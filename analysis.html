@@ -1922,8 +1922,8 @@ function drawCandlestick(s){
     cv._tooltipBound = true;
     cv.addEventListener('touchend',(e)=>{
       if(e.touches.length===0 && !chartInteraction.isPanning){
-        const t=e.changedTouches[0];
-        handleChartClick(new MouseEvent('click',{clientX:t.clientX,clientY:t.clientY}),cv,W2,H2);
+        const touch=e.changedTouches[0];
+        handleChartClick(new MouseEvent('click',{clientX:touch.clientX,clientY:touch.clientY}),cv,W2,H2);
       }
     },{passive:true});
   }
@@ -2700,7 +2700,6 @@ function setupChartInteraction(){
       t.lastDist=d;
     }else if(e.touches.length===1&&currentStock){
       if(!t.isPanning){
-        // touchstart was missed or throttled — self-arm from current position
         t.isPanning=true;t.startX=e.touches[0].clientX;t.startY=e.touches[0].clientY;
         t.startPan=S.panOffset;t.startYPan=S.yPanOffset||0;
       }
@@ -2712,7 +2711,6 @@ function setupChartInteraction(){
   const te=e=>{
     t.lastDist=0;
     if(e.touches.length===1){
-      // One finger remains after pinch — re-arm pan immediately
       t.isPanning=true;t.startX=e.touches[0].clientX;t.startY=e.touches[0].clientY;
       t.startPan=S.panOffset;t.startYPan=S.yPanOffset||0;
     }else{
@@ -2883,7 +2881,7 @@ function renderNewsTab(s) {
       'text-decoration:none;white-space:nowrap;cursor:pointer">'+lk.l+'</a>';
   }).join('');
 
-  var strip = '<div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:10px;margin-bottom:12px;-webkit-overflow-scrolling:touch;scrollbar-width:none">'+
+  var strip = '<div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:10px;margin-bottom:12px;scrollbar-width:none">'+
     googlePill+otherPills+'</div>';
 
   setTimeout(function(){ loadStockNews(sym, s.name); }, 50);
