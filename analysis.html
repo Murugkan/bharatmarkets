@@ -1717,7 +1717,7 @@ function drawNavLine(s){
       const v=mx-(mx-mn)*(i/GRID_DIV);
       ctx.fillStyle='rgba(255,255,255,1)';
       ctx.font='bold 11px JetBrains Mono,monospace';ctx.textAlign='right';ctx.textBaseline='middle';
-      ctx.fillText(Math.round(v).toLocaleString('en-IN'), W-6, y);
+      ctx.fillText(fmtIN(v), W-6, y);
     }
 
     // Clip chart drawing to chart area
@@ -1895,6 +1895,15 @@ function getQuarterlyData(s){
 }
 
 
+// Fast Indian number formatter — avoids slow toLocaleString on every frame
+function fmtIN(n){
+  const s=Math.round(n).toString();
+  if(s.length<=3) return s;
+  const last3=s.slice(-3);
+  const rest=s.slice(0,-3);
+  return rest.replace(/\B(?=(\d{2})+(?!\d))/g,',')+','+last3;
+}
+
 function drawCandlestick(s){
   try {
     const cv=document.getElementById('cv-candle');
@@ -1946,17 +1955,19 @@ function drawCandlestick(s){
   const baseWidth = Math.max(1,Math.min(n > 40 ? 3 : 6, gap*0.25));
   const bw = baseWidth * S.chartZoom;
 
-  // Full price history for KPI priceAt() lookups — only ohlcv_monthly exists now
-  const _fullHistory = s.price?.ohlcv_monthly?.length ? s.price.ohlcv_monthly : null;
-  const allCandles = (_fullHistory
-    ? _fullHistory.map(b => ({
-        d: String(b.Date || b.d || ''),
-        c: parseFloat(b.Close || b.c || 0)
-      })).filter(b => b.d && b.c > 0)
-    : (s.candles || candles).slice()
-  ).sort((a, b) => a.d.localeCompare(b.d));
-  // Pre-parse timestamps once
-  allCandles.forEach(b => { if(!b._t) b._t = new Date(b.d).getTime(); });
+  // Full price history for KPI priceAt() — cached once per stock
+  if(!s._allCandlesCache){
+    const _fullHistory = s.price?.ohlcv_monthly?.length ? s.price.ohlcv_monthly : null;
+    s._allCandlesCache = (_fullHistory
+      ? _fullHistory.map(b => ({
+          d: String(b.Date || b.d || ''),
+          c: parseFloat(b.Close || b.c || 0)
+        })).filter(b => b.d && b.c > 0)
+      : (s.candles || candles).slice()
+    ).sort((a, b) => a.d.localeCompare(b.d));
+    s._allCandlesCache.forEach(b => { if(!b._t) b._t = new Date(b.d).getTime(); });
+  }
+  const allCandles = s._allCandlesCache;
   candles.forEach(b => { if(!b._t) b._t = new Date(b.d).getTime(); });
   const visFirst = candles.length ? candles[0]._t : 0;
   const visLast  = candles.length ? candles[candles.length-1]._t : 1;
@@ -1989,11 +2000,14 @@ function drawCandlestick(s){
   const yShift = (S.yPanOffset||0) * rng;
   mn += yShift; mx += yShift;
 
-  // ✅ Y-axis labels use FULL range - they stay stable, don't move
-  const toY=p=>PAD.t+((mx-p)/rng)*cH;
-  
-  // ✅ VERTICAL BAR ZOOM: Uses your VERTICAL PINCH GESTURE (S.yAxisZoom)
-  const barHeightZoom = S.yAxisZoom || 1.0;  // 1.0 = normal, 2.0 = 2x taller
+  // Vertical zoom: narrow price range around centre so bars/axis scale together
+  const yZoom = S.yAxisZoom || 1.0;
+  const midPrice = (mn + mx) / 2;
+  const zoomedHalf = (rng / 2) / yZoom;
+  const zMn = midPrice - zoomedHalf;
+  const zMx = midPrice + zoomedHalf;
+  const zRng = zMx - zMn || 1;
+  const toY = p => PAD.t + ((zMx - p) / zRng) * cH;
   const panFrac = (S.panOffset - Math.floor(S.panOffset)) * gap;
   const barX = i => PAD.l + i*gap + gap/2 - panFrac;
 
@@ -2032,13 +2046,13 @@ function drawCandlestick(s){
   ctx.lineWidth=1.5;  // ✅ Slightly thicker
   ctx.beginPath();ctx.moveTo(W-PAD.r,0);ctx.lineTo(W-PAD.r,H);ctx.stroke();
 
-  // Price labels (draw AFTER background so they're visible on top)
+  // Price labels — font/align set once outside loop
+  ctx.fillStyle='rgba(255,255,255,1)';
+  ctx.font='bold 11px JetBrains Mono,monospace';
+  ctx.textAlign='right';ctx.textBaseline='middle';
   for(let i=0;i<=8;i++){
     const y=PAD.t+(cH/8)*i;
-    const price=mx-(mx-mn)*(i/8);
-    ctx.fillStyle='rgba(255,255,255,1)';
-    ctx.font='bold 11px JetBrains Mono,monospace';ctx.textAlign='right';ctx.textBaseline='middle';
-    ctx.fillText(Math.round(price).toLocaleString('en-IN'),W-6,y);
+    ctx.fillText(fmtIN(zMx-(zMx-zMn)*(i/8)),W-6,y);
   }
 
   // Clip all chart drawing to chart area — nothing bleeds into right axis strip
@@ -2064,21 +2078,15 @@ function drawCandlestick(s){
       const cx = barX(i);
       const yHigh=toY(c.h), yLow=toY(c.l);
       const yOpen=toY(c.o), yClose=toY(c.c);
-      const midY=(yHigh+yLow)/2;
-      const halfRange=Math.max(1,(yLow-yHigh)/2)*barHeightZoom;
-      const zHigh=midY-halfRange, zLow=midY+halfRange;
-      const zOpen=midY-((midY-yOpen)*barHeightZoom);
-      const zClose=midY-((midY-yClose)*barHeightZoom);
-
       candlestickBars.push({date:c.d,open:c.o,high:c.h,low:c.l,close:c.c,volume:c.v,bull,
-        x:cx-bw/2,y:Math.min(zHigh,zLow),w:bw,h:Math.max(1,Math.abs(zLow-zHigh))});
+        x:cx-bw/2,y:Math.min(yHigh,yLow),w:bw,h:Math.max(1,Math.abs(yLow-yHigh))});
 
       // High-low line
-      ctx.moveTo(cx,zHigh); ctx.lineTo(cx,zLow);
+      ctx.moveTo(cx,yHigh); ctx.lineTo(cx,yLow);
       // Open tick (left)
-      ctx.moveTo(cx-bw/2,zOpen); ctx.lineTo(cx,zOpen);
+      ctx.moveTo(cx-bw/2,yOpen); ctx.lineTo(cx,yOpen);
       // Close tick (right)
-      ctx.moveTo(cx,zClose); ctx.lineTo(cx+bw/2,zClose);
+      ctx.moveTo(cx,yClose); ctx.lineTo(cx+bw/2,yClose);
     });
     ctx.stroke();
   });
@@ -2100,7 +2108,7 @@ function drawCandlestick(s){
     // sits near the chart's visible maximum.
     ctx.fillStyle=bull?'#00d084':'#ff3b5c';
     ctx.font='bold 9px JetBrains Mono,monospace';ctx.textAlign='right';
-    ctx.fillText(Math.round(_ltp).toLocaleString('en-IN'),W-2,Math.max(lastY+4,PAD.t+24));
+    ctx.fillText(fmtIN(_ltp),W-2,Math.max(lastY+4,PAD.t+24));
   }
 
   // X-axis date labels - optimized for mobile
@@ -2402,8 +2410,8 @@ function drawVolume(s){
   ctx.fillStyle='rgba(255,255,255,.95)';
   ctx.font='bold 9px JetBrains Mono,monospace';
   ctx.textAlign='right';
-  ctx.fillText(Math.round(startPrice).toLocaleString('en-IN'), W-2, PAD.t+6);
-  ctx.fillText(Math.round(endPrice).toLocaleString('en-IN'), W-2, H-2);
+  ctx.fillText(fmtIN(startPrice), W-2, PAD.t+6);
+  ctx.fillText(fmtIN(endPrice), W-2, H-2);
   
   // Volume trend line (smoothed MA5)
   const volMA = candles.map((c,i)=>{
