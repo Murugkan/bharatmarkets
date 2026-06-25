@@ -1554,7 +1554,7 @@ function getSlicedCandles(s, canvasWidth){
   const base = Math.max(20, Math.floor((w-60)/7));
   const vis  = Math.max(10, Math.round(base / S.chartZoom));
   const maxP = Math.max(0, f.length - vis);
-  const pan  = Math.max(0, Math.min(maxP, S.panOffset));
+  const pan  = Math.max(0, Math.min(maxP, Math.floor(S.panOffset)));
   const end  = f.length - pan;
   return f.slice(Math.max(0, end - vis), end);
 }
@@ -1616,7 +1616,7 @@ function getSlicedNavPoints(s, canvasWidth){
   const base = Math.max(20, Math.floor((w-60)/7));
   const vis  = Math.max(10, Math.round(base / S.chartZoom));
   const maxP = Math.max(0, all.length - vis);
-  const pan  = Math.max(0, Math.min(maxP, S.panOffset));
+  const pan  = Math.max(0, Math.min(maxP, Math.floor(S.panOffset)));
   const end  = all.length - pan;
   return all.slice(Math.max(0, end - vis), end);
 }
@@ -2654,29 +2654,8 @@ function setupChartInteraction(){
   setupChartInteraction._initializedFor = canvas;
   const t={lastDist:0,isPanning:false,startX:0,startY:0,startPan:0,startYPan:0,onCanvas:false};
 
-  const _dbg={ts:0,tm:0,te:0,sa:0,pan:false,off:0,bpp:0};
-  function drawDebug(){
-    const ctx=canvas.getContext('2d');
-    const dpr=window.devicePixelRatio||1;
-    const w=canvas.offsetWidth, h=canvas.offsetHeight;
-    ctx.save();
-    ctx.setTransform(dpr,0,0,dpr,0,0);
-    ctx.fillStyle='rgba(0,0,0,0.92)';
-    ctx.fillRect(0, h-68, w, 68);
-    ctx.font='bold 14px monospace';
-    ctx.textBaseline='middle';
-    ctx.textAlign='right';
-    ctx.fillStyle='#00f2ff';
-    ctx.fillText(`ts:${_dbg.ts}  tm:${_dbg.tm}  te:${_dbg.te}  sa:${_dbg.sa}`, w-8, h-54);
-    ctx.fillStyle=_dbg.pan?'#00e896':'#ff6b85';
-    ctx.fillText(`pan:${_dbg.pan?'YES':'NO '}  off:${_dbg.off.toFixed(1)}  bpp:${_dbg.bpp.toFixed(4)}`, w-8, h-34);
-    ctx.fillStyle='#ffbf47';
-    ctx.fillText(`onCanvas:${t.onCanvas}  startX:${t.startX.toFixed(0)}`, w-8, h-14);
-    ctx.restore();
-  }
-
-  const go=()=>{ scheduleTACharts(currentStock); setTimeout(drawDebug,32); };
-  const bpp=()=>{const w=canvas.offsetWidth||320;const v=Math.max(20,Math.floor((w-60)/7))/S.chartZoom/(w-60);_dbg.bpp=v;return v;};
+  const go=()=>{ scheduleTACharts(currentStock); };
+  const bpp=()=>{const w=canvas.offsetWidth||320;return Math.max(20,Math.floor((w-60)/7))/S.chartZoom/(w-60);};
   const vpp=()=>1/(canvas.offsetHeight||400);
 
   canvas.addEventListener('mousedown',e=>{t.isPanning=true;t.startX=e.clientX;t.startY=e.clientY;t.startPan=S.panOffset;t.startYPan=S.yPanOffset||0;},{passive:true});
@@ -2695,21 +2674,18 @@ function setupChartInteraction(){
 
   const ts=e=>{
     e.preventDefault();
-    _dbg.ts++;
     t.onCanvas=true;
     if(e.touches.length===2){
       const dx=e.touches[0].clientX-e.touches[1].clientX,dy=e.touches[0].clientY-e.touches[1].clientY;
-      t.lastDist=Math.sqrt(dx*dx+dy*dy);t.isPanning=false;_dbg.pan=false;
+      t.lastDist=Math.sqrt(dx*dx+dy*dy);t.isPanning=false;
     }else{
-      t.isPanning=true;_dbg.pan=true;
+      t.isPanning=true;chartInteraction.isPanning=true;
       t.startX=e.touches[0].clientX;t.startY=e.touches[0].clientY;
       t.startPan=S.panOffset;t.startYPan=S.yPanOffset||0;t.lastDist=0;
     }
-    drawDebug();
   };
   const tm=e=>{
     e.preventDefault();
-    _dbg.tm++;
     if(e.touches.length===2){
       const dx=e.touches[0].clientX-e.touches[1].clientX,dy=e.touches[0].clientY-e.touches[1].clientY;
       const d=Math.sqrt(dx*dx+dy*dy);
@@ -2723,33 +2699,24 @@ function setupChartInteraction(){
         }
       }
       t.lastDist=d;
-    }else if(e.touches.length===1&&currentStock){
-      if(!t.isPanning){
-        // self-arm: count how often this happens
-        _dbg.sa++;
-        t.isPanning=true;_dbg.pan=true;
-        t.startX=e.touches[0].clientX;t.startY=e.touches[0].clientY;
-        t.startPan=S.panOffset;t.startYPan=S.yPanOffset||0;
-      }
+    }else if(t.isPanning&&currentStock){
       S.panOffset=Math.max(0,t.startPan-(e.touches[0].clientX-t.startX)*bpp());
-      _dbg.off=S.panOffset;_dbg.pan=t.isPanning;
       S.yPanOffset=t.startYPan+(e.touches[0].clientY-t.startY)*vpp();
       go();
     }
   };
   const te=e=>{
-    if(!t.onCanvas) return;
-    _dbg.te++;
+    if(!t.onCanvas) return; // ignore touchend from toolbar/tab taps
     t.lastDist=0;
     if(e.touches.length===1){
-      t.isPanning=true;_dbg.pan=true;
+      // one finger remains after pinch — re-arm pan
+      t.isPanning=true;chartInteraction.isPanning=true;
       t.startX=e.touches[0].clientX;t.startY=e.touches[0].clientY;
       t.startPan=S.panOffset;t.startYPan=S.yPanOffset||0;
     }else{
-      t.isPanning=false;_dbg.pan=false;chartInteraction.isPanning=false;
+      t.isPanning=false;chartInteraction.isPanning=false;
       t.onCanvas=false;
     }
-    drawDebug();
   };
 
   const attachGesture=el=>{
