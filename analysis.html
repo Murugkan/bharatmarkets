@@ -1909,14 +1909,10 @@ function drawCandlestick(s){
   const W2=Math.max(wrap?wrap.offsetWidth:0, cv.offsetWidth, 280);
   const H2=Math.max(wrap?wrap.offsetHeight:0, cv.offsetHeight, 200);
   const dpr=window.devicePixelRatio||1;
-  cv.width=W2*dpr;
-  cv.height=H2*dpr;
-  cv.style.width=W2+'px';
-  cv.style.height=H2+'px';
+  const needResize = cv.width!==W2*dpr || cv.height!==H2*dpr;
+  if(needResize){ cv.width=W2*dpr; cv.height=H2*dpr; cv.style.width=W2+'px'; cv.style.height=H2+'px'; }
   const ctx=cv.getContext('2d');
-  ctx.scale(dpr,dpr);
-  
-  // ✅ Disable image smoothing to prevent blur when zoomed
+  ctx.setTransform(dpr,0,0,dpr,0,0);
   ctx.imageSmoothingEnabled = false;
 
   cv.onclick = (e) => handleChartClick(e, cv, W2, H2);
@@ -2138,8 +2134,10 @@ function drawCandlestick(s){
   });
 
   // ── KPI overlays on price chart ──────────────────────────────────
-  const quarterly = getQuarterlyData(s);
-  drawCandlestick._kpiLabelY = []; // reset label collision tracker
+  // Skip KPI during active pan — no KPI data changes while panning
+  const anyKpiOn = Object.values(S.kpiVis).some(Boolean);
+  const quarterly = anyKpiOn ? getQuarterlyData(s) : null;
+  drawCandlestick._kpiLabelY = [];
 
   const KPI_DEFS = [
     // Income Statement
@@ -2302,14 +2300,10 @@ function drawVolume(s){
   const W2=Math.max(wrap?wrap.offsetWidth:0, 280);
   const H2=Math.max(wrap?wrap.offsetHeight:0, 100);
   const dpr=window.devicePixelRatio||1;
-  cv.width=W2*dpr;
-  cv.height=H2*dpr;
-  cv.style.width=W2+'px';
-  cv.style.height=H2+'px';
+  const needResize = cv.width!==W2*dpr || cv.height!==H2*dpr;
+  if(needResize){ cv.width=W2*dpr; cv.height=H2*dpr; cv.style.width=W2+'px'; cv.style.height=H2+'px'; }
   const ctx=cv.getContext('2d');
-  ctx.scale(dpr,dpr);
-  
-  // ✅ Disable image smoothing to prevent blur when zoomed
+  ctx.setTransform(dpr,0,0,dpr,0,0);
   ctx.imageSmoothingEnabled = false;
 
   // Use cv-candle width so getSlicedCandles returns identical slice as drawCandlestick
