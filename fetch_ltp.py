@@ -617,7 +617,23 @@ def main():
             "count": len(quotes),
             "quotes": quotes
         }, separators=(",",":")))
-    
+
+    # ── Commit sgb_prev.json if it was updated this run ───────────────────
+    sgb_prev_path = Path(SGB_PREV_FILE)
+    if sgb_prev_path.exists():
+        import subprocess
+        subprocess.run(["git", "add", str(sgb_prev_path)], check=False)
+        result = subprocess.run(
+            ["git", "diff", "--staged", "--quiet", str(sgb_prev_path)],
+            check=False)
+        if result.returncode != 0:
+            subprocess.run([
+                "git", "commit", "-m",
+                f"data: sgb_prev {now_utc().strftime('%Y-%m-%d')} [skip ci]"
+            ], check=False)
+            subprocess.run(["git", "push"], check=False)
+            print(f"💾 sgb_prev.json committed and pushed")
+
     fetch_sector_indices()
 
     elapsed = (now_utc() - start_time).total_seconds()
