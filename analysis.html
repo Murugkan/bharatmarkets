@@ -2659,26 +2659,22 @@ function setupChartInteraction(){
     const w=canvas.offsetWidth, h=canvas.offsetHeight;
     ctx.save();
     ctx.setTransform(dpr,0,0,dpr,0,0);
-    ctx.fillStyle='rgba(0,0,0,0.9)';
-    ctx.fillRect(0, h-44, w, 44);
-    ctx.font='bold 13px monospace';
+    ctx.fillStyle='rgba(0,0,0,0.92)';
+    ctx.fillRect(0, h-52, w, 52);
+    ctx.font='bold 14px monospace';
     ctx.textBaseline='middle';
+    ctx.textAlign='right';
+    // Line 1: right-aligned so never cut off
     ctx.fillStyle='#00f2ff';
-    ctx.fillText(`ts:${_dbg.ts}  tm:${_dbg.tm}  te:${_dbg.te}`, 8, h-32);
+    ctx.fillText(`ts:${_dbg.ts}  tm:${_dbg.tm}  te:${_dbg.te}`, w-8, h-38);
+    // Line 2
     ctx.fillStyle=_dbg.pan?'#00e896':'#ff6b85';
-    ctx.fillText(`pan:${_dbg.pan?'YES':'NO'}  off:${_dbg.off.toFixed(1)}  bpp:${_dbg.bpp.toFixed(4)}`, 8, h-14);
+    ctx.fillText(`pan:${_dbg.pan?'YES':'NO '}  off:${_dbg.off.toFixed(1)}  bpp:${_dbg.bpp.toFixed(4)}`, w-8, h-18);
     ctx.restore();
   }
 
-  const go=()=>{
-    scheduleTACharts(currentStock);
-    setTimeout(drawDebug, 32);
-  };
-  const bpp=()=>{
-    const w=canvas.offsetWidth||320;
-    const v=Math.max(20,Math.floor((w-60)/7))/S.chartZoom/(w-60);
-    _dbg.bpp=v; return v;
-  };
+  const go=()=>{ scheduleTACharts(currentStock); setTimeout(drawDebug,32); };
+  const bpp=()=>{const w=canvas.offsetWidth||320;const v=Math.max(20,Math.floor((w-60)/7))/S.chartZoom/(w-60);_dbg.bpp=v;return v;};
   const vpp=()=>1/(canvas.offsetHeight||400);
 
   canvas.addEventListener('mousedown',e=>{t.isPanning=true;t.startX=e.clientX;t.startY=e.clientY;t.startPan=S.panOffset;t.startYPan=S.yPanOffset||0;},{passive:true});
@@ -2731,7 +2727,7 @@ function setupChartInteraction(){
         t.startPan=S.panOffset;t.startYPan=S.yPanOffset||0;
       }
       S.panOffset=Math.max(0,t.startPan-(e.touches[0].clientX-t.startX)*bpp());
-      _dbg.off=S.panOffset; _dbg.pan=t.isPanning;
+      _dbg.off=S.panOffset;_dbg.pan=t.isPanning;
       S.yPanOffset=t.startYPan+(e.touches[0].clientY-t.startY)*vpp();
       go();
     }
