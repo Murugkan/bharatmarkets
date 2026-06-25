@@ -2733,6 +2733,9 @@ function setupChartInteraction(){
       go();
     }
   };
+  // te on document — fires exactly ONCE per gesture end regardless of
+  // which element the finger lifted from. Attaching to both canvas+vol
+  // caused double-fires (te:N > ts:N) which reset isPanning=false mid-pan.
   const te=e=>{
     _dbg.te++;
     t.lastDist=0;
@@ -2746,15 +2749,17 @@ function setupChartInteraction(){
     drawDebug();
   };
 
-  const attach=el=>{
+  // ts and tm on both canvases (so both areas respond to gestures)
+  // te on document (fires once per lift, not once per element)
+  const attachGesture=el=>{
     if(!el) return;
-    el.addEventListener('touchstart',  ts,{passive:false});
-    el.addEventListener('touchmove',   tm,{passive:false});
-    el.addEventListener('touchend',    te,{passive:true});
-    el.addEventListener('touchcancel', te,{passive:true});
+    el.addEventListener('touchstart', ts,{passive:false});
+    el.addEventListener('touchmove',  tm,{passive:false});
   };
-  attach(canvas);
-  attach(document.getElementById('cv-vol'));
+  attachGesture(canvas);
+  attachGesture(document.getElementById('cv-vol'));
+  document.addEventListener('touchend',    te,{passive:true});
+  document.addEventListener('touchcancel', te,{passive:true});
 }
 // ════════════════════════════════════════════════════════
 // CHARTS TAB FUNCTION
