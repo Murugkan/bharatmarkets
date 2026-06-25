@@ -1554,8 +1554,9 @@ function getSlicedCandles(s, canvasWidth){
   const base = Math.max(20, Math.floor((w-60)/7));
   const vis  = Math.max(10, Math.round(base / S.chartZoom));
   const maxP = Math.max(0, f.length - vis);
-  const pan  = Math.max(0, Math.min(maxP, S.panOffset));
-  const end  = f.length - pan;
+  // Write back clamped value so t.startPan captures valid offset after zoom
+  S.panOffset = Math.max(0, Math.min(maxP, S.panOffset));
+  const end  = f.length - S.panOffset;
   return f.slice(Math.max(0, end - vis), end);
 }
 
@@ -1616,8 +1617,8 @@ function getSlicedNavPoints(s, canvasWidth){
   const base = Math.max(20, Math.floor((w-60)/7));
   const vis  = Math.max(10, Math.round(base / S.chartZoom));
   const maxP = Math.max(0, all.length - vis);
-  const pan  = Math.max(0, Math.min(maxP, S.panOffset));
-  const end  = all.length - pan;
+  S.panOffset = Math.max(0, Math.min(maxP, S.panOffset));
+  const end  = all.length - S.panOffset;
   return all.slice(Math.max(0, end - vis), end);
 }
 
@@ -2306,7 +2307,10 @@ function drawVolume(s){
   // ✅ Disable image smoothing to prevent blur when zoomed
   ctx.imageSmoothingEnabled = false;
 
-  const candles=getSlicedCandles(s, W2);
+  // Use cv-candle width so getSlicedCandles returns identical slice as drawCandlestick
+  const cvCandle=document.getElementById('cv-candle');
+  const sliceW=Math.max(cvCandle?cvCandle.offsetWidth||W2:W2,280);
+  const candles=getSlicedCandles(s, sliceW);
   if(!candles.length)return;
 
   ctx.fillStyle='#070c18';ctx.fillRect(0,0,W2,H2);
@@ -2684,17 +2688,7 @@ function setupChartInteraction(){
         if(Math.abs(delta)>0.005){
           const f=1+delta*0.6;
           if(Math.abs(dy)>Math.abs(dx)) S.yAxisZoom=Math.max(0.5,Math.min(3,(S.yAxisZoom||1)*f));
-          else {
-            S.chartZoom=Math.max(0.3,Math.min(5,S.chartZoom*f));
-            // Clamp panOffset to new maxP so next pan startPan is valid
-            const cv2=document.getElementById('cv-candle');
-            const w2=cv2?cv2.offsetWidth||320:320;
-            const base2=Math.max(20,Math.floor((w2-60)/7));
-            const vis2=Math.max(10,Math.round(base2/S.chartZoom));
-            const data2=isMutualFund(currentStock)?ensureNavCache(currentStock):(currentStock._dailyCache||[]);
-            const maxP2=Math.max(0,data2.length-vis2);
-            S.panOffset=Math.min(S.panOffset,maxP2);
-          }
+          else S.chartZoom=Math.max(0.3,Math.min(5,S.chartZoom*f));
           if(currentStock) go();
         }
       }
