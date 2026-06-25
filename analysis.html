@@ -2653,7 +2653,7 @@ function setupChartInteraction(){
   if(!canvas) return;
   if(setupChartInteraction._initializedFor === canvas) return;
   setupChartInteraction._initializedFor = canvas;
-  const t={lastDist:0,isPanning:false,startX:0,startY:0,startPan:0,startYPan:0};
+  const t={lastDist:0,isPanning:false,startX:0,startY:0,startPan:0,startYPan:0,onCanvas:false};
 
   const _dbg={ts:0,tm:0,te:0,pan:false,off:0,bpp:0};
   function drawDebug(){
@@ -2695,6 +2695,7 @@ function setupChartInteraction(){
   const ts=e=>{
     e.preventDefault();
     _dbg.ts++;
+    t.onCanvas=true; // touch started on a canvas element
     if(e.touches.length===2){
       const dx=e.touches[0].clientX-e.touches[1].clientX,dy=e.touches[0].clientY-e.touches[1].clientY;
       t.lastDist=Math.sqrt(dx*dx+dy*dy);t.isPanning=false;_dbg.pan=false;
@@ -2733,10 +2734,10 @@ function setupChartInteraction(){
       go();
     }
   };
-  // te on document — fires exactly ONCE per gesture end regardless of
-  // which element the finger lifted from. Attaching to both canvas+vol
-  // caused double-fires (te:N > ts:N) which reset isPanning=false mid-pan.
+  // te on document but ONLY acts when touch originated on canvas (t.onCanvas).
+  // This prevents toolbar/tab taps from resetting isPanning.
   const te=e=>{
+    if(!t.onCanvas) return; // ignore touchend from outside canvas
     _dbg.te++;
     t.lastDist=0;
     if(e.touches.length===1){
@@ -2745,12 +2746,11 @@ function setupChartInteraction(){
       t.startPan=S.panOffset;t.startYPan=S.yPanOffset||0;
     }else{
       t.isPanning=false;_dbg.pan=false;chartInteraction.isPanning=false;
+      t.onCanvas=false; // gesture fully ended
     }
     drawDebug();
   };
 
-  // ts and tm on both canvases (so both areas respond to gestures)
-  // te on document (fires once per lift, not once per element)
   const attachGesture=el=>{
     if(!el) return;
     el.addEventListener('touchstart', ts,{passive:false});
