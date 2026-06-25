@@ -2001,22 +2001,26 @@ function drawCandlestick(s){
   ctx.fillStyle='#070c18';
   ctx.fillRect(0,0,W,H);
 
-  // Grid lines — horizontal
+  // Grid lines — horizontal, batched
+  ctx.strokeStyle='rgba(255,255,255,.22)';ctx.lineWidth=1;
+  ctx.beginPath();
   for(let i=0;i<=8;i++){
     const y=PAD.t+(cH/8)*i;
-    ctx.strokeStyle='rgba(255,255,255,.22)';ctx.lineWidth=1;
-    ctx.beginPath();ctx.moveTo(PAD.l,y);ctx.lineTo(PAD.l+cW,y);ctx.stroke();
+    ctx.moveTo(PAD.l,y);ctx.lineTo(PAD.l+cW,y);
   }
-  // Vertical gridlines — at same positions as x-axis date labels
+  ctx.stroke();
+  // Vertical gridlines — batched into single path
   {
     const vStep = Math.max(1, Math.floor(n / Math.min(volVisible ? 4 : 6, Math.floor(cW / 50))));
     ctx.strokeStyle='rgba(255,255,255,.22)';ctx.lineWidth=1;
+    ctx.beginPath();
     candles.forEach((c,i)=>{
       if(i % vStep !== 0 && i !== n-1) return;
       const x = barX(i);
       if(x > PAD.l+cW-8) return;
-      ctx.beginPath();ctx.moveTo(x,PAD.t);ctx.lineTo(x,PAD.t+cH);ctx.stroke();
+      ctx.moveTo(x,PAD.t);ctx.lineTo(x,PAD.t+cH);
     });
+    ctx.stroke();
   }
 
   // Right axis separator (draw BEFORE labels so labels appear on top)
@@ -2043,49 +2047,40 @@ function drawCandlestick(s){
   ctx.rect(PAD.l, 0, cW, H);
   ctx.clip();
 
-  // Candles - ✅ Track bar positions for click detection
+  // Candles — batched by color to minimise canvas state changes
+  // Bull (green) and bear (red) bars each drawn in a single path instead of
+  // 12 canvas calls per bar, reducing ~564 calls (47 bars) to 4 total.
   candlestickBars = [];
-  
-  candles.forEach((c,i)=>{
-    const bull=c.c>=c.o;
-    const cx=barX(i);
-    const yHigh=toY(c.h), yLow=toY(c.l);
-    const yOpen=toY(c.o), yClose=toY(c.c);
+  const lw = Math.max(1, bw*0.18);
+  ctx.lineWidth = lw;
 
-    // ✅ Apply bar height zoom around the high-low midpoint (keeps zoom behavior consistent with prior candle version)
-    const midY=(yHigh+yLow)/2;
-    const halfRange=Math.max(1,(yLow-yHigh)/2)*barHeightZoom;
-    const zHigh=midY-halfRange, zLow=midY+halfRange;
-    const zOpen=midY-((midY-yOpen)*barHeightZoom);
-    const zClose=midY-((midY-yClose)*barHeightZoom);
+  ['bull','bear'].forEach(side=>{
+    const col = side==='bull' ? 'rgba(0,255,136,.95)' : 'rgba(255,68,102,.95)';
+    ctx.strokeStyle = col;
+    ctx.beginPath();
+    candles.forEach((c,i)=>{
+      const bull = c.c >= c.o;
+      if((side==='bull') !== bull) return;
+      const cx = barX(i);
+      const yHigh=toY(c.h), yLow=toY(c.l);
+      const yOpen=toY(c.o), yClose=toY(c.c);
+      const midY=(yHigh+yLow)/2;
+      const halfRange=Math.max(1,(yLow-yHigh)/2)*barHeightZoom;
+      const zHigh=midY-halfRange, zLow=midY+halfRange;
+      const zOpen=midY-((midY-yOpen)*barHeightZoom);
+      const zClose=midY-((midY-yClose)*barHeightZoom);
 
-    // ✅ Track bar for click detection — bounding box spans full high-low range
-    candlestickBars.push({
-      date: c.d,
-      open: c.o,
-      high: c.h,
-      low: c.l,
-      close: c.c,
-      volume: c.v,
-      bull: bull,
-      x: cx - bw/2,
-      y: Math.min(zHigh, zLow),
-      w: bw,
-      h: Math.max(1, Math.abs(zLow - zHigh))
+      candlestickBars.push({date:c.d,open:c.o,high:c.h,low:c.l,close:c.c,volume:c.v,bull,
+        x:cx-bw/2,y:Math.min(zHigh,zLow),w:bw,h:Math.max(1,Math.abs(zLow-zHigh))});
+
+      // High-low line
+      ctx.moveTo(cx,zHigh); ctx.lineTo(cx,zLow);
+      // Open tick (left)
+      ctx.moveTo(cx-bw/2,zOpen); ctx.lineTo(cx,zOpen);
+      // Close tick (right)
+      ctx.moveTo(cx,zClose); ctx.lineTo(cx+bw/2,zClose);
     });
-
-    const col = bull?'rgba(0,255,136,.95)':'rgba(255,68,102,.95)';
-    ctx.strokeStyle=col;
-    ctx.lineWidth=Math.max(1, bw*0.18);
-
-    // Vertical high-low line
-    ctx.beginPath();ctx.moveTo(cx,zHigh);ctx.lineTo(cx,zLow);ctx.stroke();
-
-    // Left tick = open
-    ctx.beginPath();ctx.moveTo(cx-bw/2,zOpen);ctx.lineTo(cx,zOpen);ctx.stroke();
-
-    // Right tick = close
-    ctx.beginPath();ctx.moveTo(cx,zClose);ctx.lineTo(cx+bw/2,zClose);ctx.stroke();
+    ctx.stroke();
   });
 
   // Restore chart clip — x-axis labels and right-axis items draw freely
@@ -2347,23 +2342,27 @@ function drawVolume(s){
   {
     const vStep = Math.max(1, Math.floor(n / Math.min(4, Math.floor(cW/50))));
     ctx.strokeStyle='rgba(255,255,255,.22)';ctx.lineWidth=1;
+    ctx.beginPath();
     candles.forEach((c,i)=>{
       if(i % vStep !== 0 && i !== n-1) return;
       const x = PAD.l+i*gap+(gap-bw)/2 - panFrac;
       if(x > PAD.l+cW-8) return;
-      ctx.beginPath();ctx.moveTo(x,PAD.t);ctx.lineTo(x,PAD.t+cH);ctx.stroke();
+      ctx.moveTo(x,PAD.t);ctx.lineTo(x,PAD.t+cH);
     });
+    ctx.stroke();
   }
 
-  // Volume bars - each bar colored based on corresponding candlestick
-  candles.forEach((c,i)=>{
-    const bh=Math.max(2,(c.v/mv)*cH);
-    const x = PAD.l+i*gap+(gap-bw)/2 - panFrac;
-    // Color: green if close > open, red if close <= open (matches candlestick color)
-    const barColor = (c.c > c.o) ? '#00d084' : '#ff3b5c';
-    ctx.fillStyle=barColor;
+  // Volume bars — batched by color (bull/bear) for fewer canvas state changes
+  ['#00d084','#ff3b5c'].forEach(col=>{
+    ctx.fillStyle=col;
     ctx.beginPath();
-    ctx.rect(x,PAD.t+cH-bh,bw,bh);
+    candles.forEach((c,i)=>{
+      const isBull = c.c > c.o;
+      if((col==='#00d084') !== isBull) return;
+      const bh=Math.max(2,(c.v/mv)*cH);
+      const x = PAD.l+i*gap+(gap-bw)/2 - panFrac;
+      ctx.rect(x,PAD.t+cH-bh,bw,bh);
+    });
     ctx.fill();
   });
 
