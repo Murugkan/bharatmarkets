@@ -40,6 +40,7 @@ SYMBOLS_FILE   = "data/unified-symbols.json"
 SYMBOL_MAP_FILE= "data/symbol_map.json"
 LTP_FILE       = "data/ltp.json"
 SECTOR_IDX_FILE= "data/sector_indices.json"
+SGB_PREV_FILE  = "data/sgb_prev.json"
 
 # ── Load shared symbol map ─────────────────────────────────────────────
 def load_symbol_map():
@@ -278,41 +279,66 @@ def fetch_sgb_ltp(session, symbol):
         raise ValueError("price pattern not found on page")
     return float(match.group(1).replace(',', ''))
 
+def load_sgb_prev():
+    """Load sgb_prev.json — {sym: {prev_close, date}} keyed by IST date."""
+    try:
+        return json.loads(Path(SGB_PREV_FILE).read_text())
+    except:
+        return {}
+
+def save_sgb_prev(data):
+    Path(SGB_PREV_FILE).write_text(json.dumps(data, separators=(",", ":")))
+
 def fetch_sgb_quotes(sgb_syms, sym_to_entry, prev_quotes):
-    """Fetch SGB LTPs from sgbanalyzer.com and compute 1D change from previous ltp.json."""
+    """Fetch SGB LTPs from sgbanalyzer.com and compute 1D change via sgb_prev.json sidecar."""
     if not sgb_syms:
         return {}
     print(f"\n🥇 Fetching {len(sgb_syms)} SGB(s) from sgbanalyzer.com…")
+
+    # IST date — prev_close is pinned per IST trading day
+    ist = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
+    today = datetime.datetime.now(ist).strftime("%Y-%m-%d")
+
+    sgb_prev = load_sgb_prev()
+    sgb_prev_updated = False
     session = requests.Session()
     quotes = {}
+
     for sym in sorted(sgb_syms):
         entry = sym_to_entry.get(sym, {})
         try:
             ltp = fetch_sgb_ltp(session, sym)
-            prev_q = prev_quotes.get(sym, {})
-            prev_ltp = prev_q.get('ltp')
-            if prev_ltp is not None:
-                change = round(ltp - prev_ltp, 2)
-                change_pct = round((ltp - prev_ltp) / prev_ltp * 100, 3) if prev_ltp else 0.0
-            else:
-                change = None
-                change_pct = None
+            prev_entry = sgb_prev.get(sym, {})
+
+            if prev_entry.get("date") != today:
+                # First run of the day — yesterday's ltp.json ltp becomes today's prev_close
+                new_prev = prev_quotes.get(sym, {}).get("ltp")
+                sgb_prev[sym] = {"prev_close": new_prev, "date": today}
+                sgb_prev_updated = True
+
+            prev_close = sgb_prev[sym].get("prev_close")
+            change     = round(ltp - prev_close, 2)     if prev_close is not None else None
+            change_pct = round((ltp - prev_close) / prev_close * 100, 3) if prev_close else None
+
             quotes[sym] = {
                 "ticker": sym,
-                "name": entry.get("name", sym),
-                "sector": entry.get("sector", "Sovereign Gold Bond"),
-                "ltp": ltp,
-                "change": change,
-                "changePct": change_pct,
-                "open": None, "high": None, "low": None, "prev": prev_ltp,
+                "name":   entry.get("name", sym),
+                "sector": entry.get("sector", "Government Securities"),
+                "ltp": ltp, "change": change, "changePct": change_pct,
+                "open": None, "high": None, "low": None, "prev": prev_close,
                 "vol": 0, "w52h": None, "w52l": None, "beta": None,
                 "source": "sgbanalyzer.com",
             }
-            print(f"  ✓ {sym}: ₹{ltp:,.2f}" + (f" ({change:+.2f}, {change_pct:+.3f}%)" if change is not None else ""))
+            print(f"  ✓ {sym}: ₹{ltp:,.2f}" + (f" ({change:+.2f}, {change_pct:+.3f}%)" if change is not None else " (no prev close yet)"))
         except Exception as e:
             print(f"  ✗ {sym}: {e}")
             logger.warning(f"SGB fetch failed {sym}: {e}")
         time.sleep(1)
+
+    if sgb_prev_updated:
+        save_sgb_prev(sgb_prev)
+        print(f"  💾 sgb_prev.json updated for {today}")
+
     return quotes
 
 # ── Sector Index Symbols (Yahoo Finance) ──────────────────────────────────────
