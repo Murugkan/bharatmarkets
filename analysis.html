@@ -1639,10 +1639,10 @@ function drawNavLine(s){
     const W2 = Math.max(wrap?wrap.offsetWidth:0, cv.offsetWidth, 280);
     const H2 = Math.max(wrap?wrap.offsetHeight:0, cv.offsetHeight, 300);
     const dpr = window.devicePixelRatio || 1;
-    cv.width = W2*dpr; cv.height = H2*dpr;
-    cv.style.width = W2+'px'; cv.style.height = H2+'px';
+    const needResize = cv.width!==W2*dpr || cv.height!==H2*dpr;
+    if(needResize){ cv.width=W2*dpr; cv.height=H2*dpr; cv.style.width=W2+'px'; cv.style.height=H2+'px'; }
     const ctx = cv.getContext('2d');
-    ctx.scale(dpr,dpr);
+    ctx.setTransform(dpr,0,0,dpr,0,0);
     ctx.imageSmoothingEnabled = false;
 
     const pts = getSlicedNavPoints(s, W2);
@@ -1669,13 +1669,17 @@ function drawNavLine(s){
     // Small headroom so the line doesn't touch the very top/bottom edge
     const pad = (mx-mn)*0.06 || mx*0.02 || 1;
     mn -= pad; mx += pad;
-    const rng = mx-mn || 1;
 
-    const toY = v => PAD.t + ((mx-v)/rng) * cH;
+    // Vertical zoom: narrow price range around centre (same as drawCandlestick)
+    const yZoom = S.yAxisZoom || 1.0;
+    const midPrice = (mn + mx) / 2;
+    const zoomedHalf = ((mx - mn) / 2) / yZoom;
+    const zMn = midPrice - zoomedHalf;
+    const zMx = midPrice + zoomedHalf;
+    const zRng = zMx - zMn || 1;
+
+    const toY = v => PAD.t + ((zMx - v) / zRng) * cH;
     const toX = t => PAD.l + ((t-visFirst)/visRange) * cW;
-    const barHeightZoom = S.yAxisZoom || 1.0;
-    const midY = PAD.t + cH/2;
-    const zoomY = y => midY - (midY-y)*barHeightZoom;
 
     // Background
     ctx.fillStyle='#070c18';
@@ -1714,7 +1718,7 @@ function drawNavLine(s){
     // NAV value labels (right axis) — matches GRID_DIV above
     for(let i=0;i<=GRID_DIV;i++){
       const y=PAD.t+(cH/GRID_DIV)*i;
-      const v=mx-(mx-mn)*(i/GRID_DIV);
+      const v=zMx-(zMx-zMn)*(i/GRID_DIV);
       ctx.fillStyle='rgba(255,255,255,1)';
       ctx.font='bold 11px JetBrains Mono,monospace';ctx.textAlign='right';ctx.textBaseline='middle';
       ctx.fillText(fmtIN(v), W-3, y);
@@ -1733,14 +1737,14 @@ function drawNavLine(s){
     ctx.lineWidth = 1.5; // constant width regardless of zoom, like a price line
     ctx.beginPath();
     pts.forEach((p,i) => {
-      const x = toX(p._t), y = zoomY(toY(p.v));
+      const x = toX(p._t), y = toY(p.v);
       candlestickBars.push({ date:p.d, close:p.v, x:x-2, y:y-2, w:4, h:4 }); // minimal hit-box for future tooltip reuse
       i===0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
     });
     ctx.stroke();
 
     // Dot on the last point
-    const lastX = toX(pts[n-1]._t), lastY = zoomY(toY(pts[n-1].v));
+    const lastX = toX(pts[n-1]._t), lastY = toY(pts[n-1].v);
     ctx.fillStyle = lineCol;
     ctx.beginPath();
     ctx.arc(lastX, lastY, 3, 0, Math.PI*2);
@@ -1750,7 +1754,7 @@ function drawNavLine(s){
 
     // Current NAV dashed line + badge
     const navVal = (s.price && s.price.ltp_nav) || pts[n-1].v;
-    const navY = zoomY(toY(navVal));
+    const navY = toY(navVal);
     ctx.strokeStyle = up ? 'rgba(0,208,132,.5)' : 'rgba(255,59,92,.5)';
     ctx.lineWidth=.6; ctx.setLineDash([3,3]);
     ctx.beginPath();ctx.moveTo(PAD.l,navY);ctx.lineTo(PAD.l+cW,navY);ctx.stroke();
