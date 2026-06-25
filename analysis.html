@@ -2652,36 +2652,32 @@ function setupChartInteraction(){
   setupChartInteraction._initializedFor = canvas;
   const t={lastDist:0,isPanning:false,startX:0,startY:0,startPan:0,startYPan:0};
 
-  // Debug overlay — shows live state on canvas so we can see what's firing
-  let _dbg = {ts:0,tm:0,te:0,touches:0,panning:false,pan:0,bppVal:0};
+  const _dbg={ts:0,tm:0,te:0,pan:false,off:0,bpp:0};
   function drawDebug(){
     const ctx=canvas.getContext('2d');
     const dpr=window.devicePixelRatio||1;
-    const w=canvas.offsetWidth, h=30;
+    const w=canvas.offsetWidth, h=canvas.offsetHeight;
     ctx.save();
     ctx.setTransform(dpr,0,0,dpr,0,0);
-    ctx.fillStyle='rgba(0,0,0,0.85)';
-    ctx.fillRect(0,0,w,h);
-    ctx.font='bold 11px monospace';
-    ctx.fillStyle='#00f2ff';
+    ctx.fillStyle='rgba(0,0,0,0.9)';
+    ctx.fillRect(0, h-44, w, 44);
+    ctx.font='bold 13px monospace';
     ctx.textBaseline='middle';
-    ctx.fillText(
-      `ts:${_dbg.ts} tm:${_dbg.tm} te:${_dbg.te} | tc:${_dbg.touches} pan:${_dbg.panning?'Y':'N'} off:${_dbg.pan.toFixed(1)} bpp:${_dbg.bppVal.toFixed(4)}`,
-      8, 15
-    );
+    ctx.fillStyle='#00f2ff';
+    ctx.fillText(`ts:${_dbg.ts}  tm:${_dbg.tm}  te:${_dbg.te}`, 8, h-32);
+    ctx.fillStyle=_dbg.pan?'#00e896':'#ff6b85';
+    ctx.fillText(`pan:${_dbg.pan?'YES':'NO'}  off:${_dbg.off.toFixed(1)}  bpp:${_dbg.bpp.toFixed(4)}`, 8, h-14);
     ctx.restore();
   }
 
   const go=()=>{
     scheduleTACharts(currentStock);
-    requestAnimationFrame(drawDebug);
+    setTimeout(drawDebug, 32);
   };
-
   const bpp=()=>{
     const w=canvas.offsetWidth||320;
     const v=Math.max(20,Math.floor((w-60)/7))/S.chartZoom/(w-60);
-    _dbg.bppVal=v;
-    return v;
+    _dbg.bpp=v; return v;
   };
   const vpp=()=>1/(canvas.offsetHeight||400);
 
@@ -2701,20 +2697,20 @@ function setupChartInteraction(){
 
   const ts=e=>{
     e.preventDefault();
-    _dbg.ts++; _dbg.touches=e.touches.length;
+    _dbg.ts++;
     if(e.touches.length===2){
       const dx=e.touches[0].clientX-e.touches[1].clientX,dy=e.touches[0].clientY-e.touches[1].clientY;
-      t.lastDist=Math.sqrt(dx*dx+dy*dy);t.isPanning=false;_dbg.panning=false;
+      t.lastDist=Math.sqrt(dx*dx+dy*dy);t.isPanning=false;_dbg.pan=false;
     }else{
-      t.isPanning=true;_dbg.panning=true;
+      t.isPanning=true;_dbg.pan=true;
       t.startX=e.touches[0].clientX;t.startY=e.touches[0].clientY;
       t.startPan=S.panOffset;t.startYPan=S.yPanOffset||0;t.lastDist=0;
     }
-    requestAnimationFrame(drawDebug);
+    drawDebug();
   };
   const tm=e=>{
     e.preventDefault();
-    _dbg.tm++; _dbg.touches=e.touches.length;
+    _dbg.tm++;
     if(e.touches.length===2){
       const dx=e.touches[0].clientX-e.touches[1].clientX,dy=e.touches[0].clientY-e.touches[1].clientY;
       const d=Math.sqrt(dx*dx+dy*dy);
@@ -2730,27 +2726,27 @@ function setupChartInteraction(){
       t.lastDist=d;
     }else if(e.touches.length===1&&currentStock){
       if(!t.isPanning){
-        t.isPanning=true;_dbg.panning=true;
+        t.isPanning=true;_dbg.pan=true;
         t.startX=e.touches[0].clientX;t.startY=e.touches[0].clientY;
         t.startPan=S.panOffset;t.startYPan=S.yPanOffset||0;
       }
       S.panOffset=Math.max(0,t.startPan-(e.touches[0].clientX-t.startX)*bpp());
-      _dbg.pan=S.panOffset; _dbg.panning=t.isPanning;
+      _dbg.off=S.panOffset; _dbg.pan=t.isPanning;
       S.yPanOffset=t.startYPan+(e.touches[0].clientY-t.startY)*vpp();
       go();
     }
   };
   const te=e=>{
-    _dbg.te++; _dbg.touches=e.touches.length;
+    _dbg.te++;
     t.lastDist=0;
     if(e.touches.length===1){
-      t.isPanning=true;_dbg.panning=true;
+      t.isPanning=true;_dbg.pan=true;
       t.startX=e.touches[0].clientX;t.startY=e.touches[0].clientY;
       t.startPan=S.panOffset;t.startYPan=S.yPanOffset||0;
     }else{
-      t.isPanning=false;_dbg.panning=false;chartInteraction.isPanning=false;
+      t.isPanning=false;_dbg.pan=false;chartInteraction.isPanning=false;
     }
-    requestAnimationFrame(drawDebug);
+    drawDebug();
   };
 
   const attach=el=>{
