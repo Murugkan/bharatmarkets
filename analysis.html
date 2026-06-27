@@ -1528,7 +1528,7 @@ function getSlicedCandles(s, canvasWidth){
 
   // Cache normalised array — rebuilt once per stock (no interval switching anymore)
   if(!s._dailyCache) {
-    s._dailyCache = raw
+    const priceCandles = raw
       ? raw.map(b => ({
           d: String(b.Date || b.d || ''),
           o: parseFloat(b.Open  || b.o || 0),
@@ -1539,6 +1539,51 @@ function getSlicedCandles(s, canvasWidth){
         })).filter(b => b.d && b.c > 0)
         .sort((a, b) => a.d.localeCompare(b.d))
       : (s.candles || []);
+
+    // Prepend phantom monthly slots to cover pre-price-history KPI dates.
+    // The earliest annual KPI date may predate the first price candle (e.g. an
+    // IPO stock with FY15 financials but price history only from IPO date).
+    // Phantom slots have c=0 so candle drawing skips them; they only exist to
+    // extend the x-axis leftward so KPI dots land at correct pixel positions.
+    const phantoms = [];
+    if(priceCandles.length){
+      // Find earliest KPI date across all financial series
+      const fin = s.financials || {};
+      const dates = [];
+      ['revenue','net_profit','eps','total_assets','borrowings',
+       'operating_cash_flow','fcf','net_cash_flow','interest',
+       'operating_margin_pct','profit_before_tax','cash_conversion_ratio',
+       'dividend_payout_pct'].forEach(fn => {
+        ['consolidated','standalone'].forEach(acc => {
+          ['annual','quarterly'].forEach(freq => {
+            const obj = fin[fn]?.[acc]?.[freq];
+            if(obj) dates.push(...Object.keys(obj));
+          });
+        });
+      });
+      const prom = s.company_details?.shareholding?.pattern?.promoters || {};
+      const roce = s.ratios?.screener?.roce_pct || {};
+      dates.push(...Object.keys(prom), ...Object.keys(roce));
+
+      if(dates.length){
+        const earliestKpi = dates.sort()[0]; // YYYY-MM-DD string, sorts lexically
+        const firstCandle = priceCandles[0].d;
+        if(earliestKpi < firstCandle){
+          // Step back month by month from firstCandle until we pass earliestKpi
+          let yr = parseInt(firstCandle.slice(0,4));
+          let mo = parseInt(firstCandle.slice(5,7)) - 1; // 0-indexed month
+          while(true){
+            mo--; if(mo < 0){ mo = 11; yr--; }
+            const dd = `${yr}-${String(mo+1).padStart(2,'0')}-01`;
+            phantoms.unshift({ d: dd, o:0, h:0, l:0, c:0, v:0, _phantom: true });
+            if(dd <= earliestKpi) break;
+            if(phantoms.length > 60) break; // safety cap: max 5yr lookback
+          }
+        }
+      }
+    }
+
+    s._dailyCache = [...phantoms, ...priceCandles];
     // Pre-parse timestamps for fast date math
     s._dailyCache.forEach(b => { if(!b._t) b._t = new Date(b.d).getTime(); });
   }
@@ -1959,17 +2004,14 @@ function drawCandlestick(s){
   const baseWidth = Math.max(1,Math.min(n > 40 ? 3 : 6, gap*0.25));
   const bw = baseWidth * S.chartZoom;
 
-  // Full price history for KPI priceAt() — cached once per stock
+  // Full price history for KPI priceAt() — reuse _dailyCache which already
+  // includes phantom slots prepended for pre-price-history KPI dates.
   if(!s._allCandlesCache){
-    const _fullHistory = s.price?.ohlcv_monthly?.length ? s.price.ohlcv_monthly : null;
-    s._allCandlesCache = (_fullHistory
-      ? _fullHistory.map(b => ({
-          d: String(b.Date || b.d || ''),
-          c: parseFloat(b.Close || b.c || 0)
-        })).filter(b => b.d && b.c > 0)
-      : (s.candles || candles).slice()
-    ).sort((a, b) => a.d.localeCompare(b.d));
-    s._allCandlesCache.forEach(b => { if(!b._t) b._t = new Date(b.d).getTime(); });
+    // Ensure _dailyCache is built first (getSlicedCandles may not have run yet)
+    if(!s._dailyCache) getSlicedCandles(s, 320);
+    s._allCandlesCache = s._dailyCache.map(b => ({
+      d: b.d, c: b.c || 0, _t: b._t, _phantom: b._phantom
+    }));
   }
   const allCandles = s._allCandlesCache;
   candles.forEach(b => { if(!b._t) b._t = new Date(b.d).getTime(); });
@@ -1982,7 +2024,7 @@ function drawCandlestick(s){
   const allLast  = allCandles.length ? allCandles[allCandles.length-1]._t : visLast;
   const allRange = allLast - allFirst || 1;
 
-  const allPrices=candles.flatMap(c=>[c.h,c.l]);
+  const allPrices=candles.filter(c=>!c._phantom && c.c).flatMap(c=>[c.h,c.l]);
 
   // Use loop instead of Math.max/min spread to avoid stack overflow on large arrays
   let mn=Infinity, mx=-Infinity;
@@ -2077,6 +2119,7 @@ function drawCandlestick(s){
     ctx.strokeStyle = col;
     ctx.beginPath();
     candles.forEach((c,i)=>{
+      if(c._phantom || !c.c) return; // skip phantom pre-history slots
       const bull = c.c >= c.o;
       if((side==='bull') !== bull) return;
       const cx = barX(i);
@@ -2122,6 +2165,7 @@ function drawCandlestick(s){
   ctx.font='bold 12px sans-serif';  // ✅ Bigger font for mobile
   ctx.textBaseline = 'top';
   candles.forEach((c,i)=>{
+    if(c._phantom) return; // no label for phantom pre-history slots
     if(i % lblStep !== 0 && i !== n-1) return;
     let lbl = '';
     
@@ -2213,12 +2257,12 @@ function drawCandlestick(s){
     return barX(fracIdx - _kpiAllOffset);
   }
 
-  // Search FULL history for price on/before a date
+  // Search FULL history for price on/before a date — skip phantom slots (c=0)
   function priceAt(dateStr){
     for(let i=allCandles.length-1; i>=0; i--){
-      if(allCandles[i].d <= dateStr) return allCandles[i].c;
+      if(allCandles[i].d <= dateStr && allCandles[i].c > 0) return allCandles[i].c;
     }
-    return allCandles.length ? allCandles[0].c : (resolveField(s, 'ltp') || 0);
+    return allCandles.length ? (allCandles.find(b=>b.c>0)||{c:0}).c : (resolveField(s, 'ltp') || 0);
   }
 
   // Draw KPI overlays
@@ -2451,7 +2495,7 @@ function drawVolume(s){
   // ✅ Apply zoom to volume bar width too
   const volBaseWidth = Math.max(1,Math.min(n > 40 ? 2 : 4, gap*0.25));
   const bw = volBaseWidth * S.chartZoom;
-  const mv=Math.max(...candles.map(c=>c.v))||1;
+  const mv=Math.max(...candles.filter(c=>!c._phantom).map(c=>c.v))||1;
   
   // Calculate price range from candles for labels
   const allPrices = candles.map(c=>c.h).concat(candles.map(c=>c.l));
@@ -2491,6 +2535,7 @@ function drawVolume(s){
     ctx.fillStyle=col;
     ctx.beginPath();
     candles.forEach((c,i)=>{
+      if(c._phantom || !c.c) return;
       const isBull = c.c > c.o;
       if((col==='#00d084') !== isBull) return;
       const bh=Math.max(2,(c.v/mv)*cH);
@@ -2515,7 +2560,7 @@ function drawVolume(s){
   ctx.font='bold 10px JetBrains Mono,monospace';
   ctx.textAlign='right';  // ✅ Changed from left to right
   ctx.textBaseline='middle';
-  const maxVol = Math.max(...candles.map(c=>c.v))||1;
+  const maxVol = Math.max(...candles.filter(c=>!c._phantom).map(c=>c.v))||1;
   const volLabelTop = PAD.t + 10, volLabelBottom = PAD.t + cH - 10;
   for(let i=0; i<=2; i++){
     const y = volLabelBottom - ((volLabelBottom-volLabelTop)/2)*i;
