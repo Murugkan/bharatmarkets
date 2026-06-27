@@ -2284,20 +2284,24 @@ function drawCandlestick(s){
     const kpiY = v => yBot - ((v - vMin) / vRng) * (yBot - yTop);
 
     ctx.save();
-    // Clip lines/fills to chart area only — prevent bleeding into right axis
+    // Hard clip to chart area — prevents any line from escaping into axes or padding
     ctx.beginPath();
     ctx.rect(PAD.l, PAD.t, cW, H - PAD.t - PAD.b);
     ctx.clip();
-    ctx.strokeStyle = col; ctx.lineWidth = 1.5; ctx.globalAlpha = 0.9;
+    ctx.strokeStyle = col; ctx.lineWidth = 1.5;
 
     // Viewport x bounds
     const xLeft  = PAD.l;
     const xRight = PAD.l + cW;
+    const yTop2  = PAD.t;
+    const yBot2  = H - PAD.b;
 
-    // Interpolate pixel (x,y) where segment [x0,y0]->[x1,y1] crosses x=xBound
+    // Interpolate pixel y where segment crosses x=xBound, clamped to y viewport
     function interpX(x0, y0, x1, y1, xBound){
+      if(x1 === x0) return (y0 + y1) / 2;
       const t = (xBound - x0) / (x1 - x0);
-      return y0 + t * (y1 - y0);
+      const y = y0 + t * (y1 - y0);
+      return Math.max(yTop2, Math.min(yBot2, y));
     }
 
     if(drawLine){
@@ -2310,9 +2314,10 @@ function drawCandlestick(s){
         const inView = px >= xLeft && px <= xRight;
 
         if(j === 0){
+          // Only start pen if first point is actually in view; otherwise
+          // let j===1 handle the left-entry interpolation
           if(inView){ ctx.moveTo(px, py); penDown = true; }
-          else if(px > xRight){ /* first point off right — handled when next comes in */ penDown = false; }
-          else { ctx.moveTo(px, py); penDown = true; } // off left — still moveTo for continuity
+          // off-screen: don't moveTo — j===1 will interpolate the entry point
           continue;
         }
 
@@ -2325,13 +2330,13 @@ function drawCandlestick(s){
           if(!penDown){ ctx.moveTo(prevX, prevY); penDown = true; }
           ctx.lineTo(px, py);
         } else if(inView && !prevIn){
-          // Entering viewport from left — start from left edge intersection
+          // Entering viewport — interpolate left or right edge entry
           if(prevX < xLeft){
             const iy = interpX(prevX, prevY, px, py, xLeft);
             ctx.moveTo(xLeft, iy); penDown = true;
             ctx.lineTo(px, py);
           } else {
-            // Entering from right (panning) — just moveTo current
+            // Entering from right (panned past this point) — moveTo current
             ctx.moveTo(px, py); penDown = true;
           }
         } else if(!inView && prevIn){
@@ -2342,12 +2347,23 @@ function drawCandlestick(s){
             ctx.lineTo(xRight, iy);
             penDown = false;
           } else {
-            // Exiting left
+            // Exiting left — draw to left edge intersection
+            const iy = interpX(prevX, prevY, px, py, xLeft);
             if(!penDown){ ctx.moveTo(prevX, prevY); penDown = true; }
-            ctx.lineTo(px, py);
+            ctx.lineTo(xLeft, iy);
+            penDown = false;
           }
+        } else if(!prevIn && !inView){
+          // Both off-screen: check if segment crosses the viewport entirely
+          if(prevX < xLeft && px > xRight){
+            const iyL = interpX(prevX, prevY, px, py, xLeft);
+            const iyR = interpX(prevX, prevY, px, py, xRight);
+            ctx.moveTo(xLeft, iyL);
+            ctx.lineTo(xRight, iyR);
+            penDown = false;
+          }
+          // else truly off-screen on same side — skip
         }
-        // Both off-screen: skip
       }
       ctx.stroke();
     }
