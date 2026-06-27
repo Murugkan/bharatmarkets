@@ -2384,7 +2384,6 @@ function drawCandlestick(s){
       // When an off-screen-x point has kpiY outside chart bounds, it would
       // produce a corner-entry line (entering from top/bottom edge). In that
       // case reset the pen so the line starts fresh at the first in-view point.
-      const _cH = yBot2 - yTop2;
       let penX=null, penY=null;
       for(let j=1; j<pts.length; j++){
         const a=pts[j-1], b=pts[j];
@@ -2394,9 +2393,9 @@ function drawCandlestick(s){
         // Both off same x-side: nothing to draw
         if(ax < xLeft && bx < xLeft){ penX=null; continue; }
         if(ax > xRight && bx > xRight){ penX=null; continue; }
-        // Off-screen-x point with kpiY far outside bounds → corner entry → skip
-        if(aOffX && (ay < yTop2 - _cH || ay > yBot2 + _cH)){ penX=null; continue; }
-        if(bOffX && (by < yTop2 - _cH || by > yBot2 + _cH)){ penX=null; continue; }
+        // Off-screen-x point with kpiY outside chart bounds → corner entry → skip
+        if(aOffX && (ay < yTop2 || ay > yBot2)){ penX=null; continue; }
+        if(bOffX && (by < yTop2 || by > yBot2)){ penX=null; continue; }
         const seg = clipSeg(ax,ay,bx,by);
         if(!seg){ penX=null; continue; }
         if(penX===null || Math.abs(seg.x0-penX)>0.5 || Math.abs(seg.y0-penY)>0.5){
