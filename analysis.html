@@ -2037,7 +2037,7 @@ function drawCandlestick(s){
   const yZoom = S.yAxisZoom || 1.0;
   const midPrice = (mn + mx) / 2;
   const zoomedHalf = (rng / 2) / yZoom;
-  const zMn = midPrice - zoomedHalf;
+  const zMn = Math.max(0, midPrice - zoomedHalf);
   const zMx = midPrice + zoomedHalf;
   const zRng = zMx - zMn || 1;
   const toY = p => PAD.t + ((zMx - p) / zRng) * cH;
@@ -2077,13 +2077,23 @@ function drawCandlestick(s){
   ctx.lineWidth=1.5;  // ✅ Slightly thicker
   ctx.beginPath();ctx.moveTo(W-PAD.r,0);ctx.lineTo(W-PAD.r,H);ctx.stroke();
 
-  // Price labels — font/align set once outside loop
+  // Price labels — suppressed when KPI overlays are active (each KPI has its own
+  // independent normalised scale; showing price axis numbers would be misleading).
+  const _anyKpiOn = Object.values(S.kpiVis||{}).some(Boolean);
   ctx.fillStyle='rgba(255,255,255,1)';
   ctx.font='bold 11px JetBrains Mono,monospace';
-  ctx.textAlign='right';ctx.textBaseline='middle';
-  for(let i=0;i<=8;i++){
-    const y=PAD.t+(cH/8)*i;
-    ctx.fillText(fmtIN(zMx-(zMx-zMn)*(i/8)),W-3,y);
+  ctx.textAlign='right'; ctx.textBaseline='middle';
+  if(!_anyKpiOn){
+    for(let i=0;i<=8;i++){
+      const y=PAD.t+(cH/8)*i;
+      ctx.fillText(fmtIN(zMx-(zMx-zMn)*(i/8)),W-3,y);
+    }
+  } else {
+    // KPI mode: show current price only, and a small "KPI" indicator
+    ctx.fillStyle='rgba(255,255,255,0.35)';
+    ctx.font='bold 9px JetBrains Mono,monospace';
+    ctx.fillText('KPI', W-3, PAD.t+8);
+    ctx.fillText('mode', W-3, PAD.t+20);
   }
 
   // Clip all chart drawing to chart area — nothing bleeds into right axis strip
