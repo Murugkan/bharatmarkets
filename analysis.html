@@ -2370,9 +2370,17 @@ function drawCandlestick(s){
       for(let j=1; j<pts.length; j++){
         const a=pts[j-1], b=pts[j];
         const ax=a.x, ay=kpiY(a.v), bx=b.x, by=kpiY(b.v);
+        const aIn = ax>=xLeft && ax<=xRight && ay>=yTop2 && ay<=yBot2;
+        const bIn = bx>=xLeft && bx<=xRight && by>=yTop2 && by<=yBot2;
+
+        // If the off-screen endpoint is outside y-bounds, don't draw a connecting
+        // segment — it would enter from a top/bottom edge corner which looks wrong.
+        // Instead start fresh at the first in-view point.
+        if(!aIn && (ay<yTop2 || ay>yBot2)){ penX=null; continue; }
+        if(!bIn && (by<yTop2 || by>yBot2)){ penX=null; continue; }
+
         const seg = clipSeg(ax,ay,bx,by);
         if(!seg){ penX=null; continue; }
-        // If clipped start differs from pen position, lift and move
         if(penX===null || Math.abs(seg.x0-penX)>0.5 || Math.abs(seg.y0-penY)>0.5){
           ctx.moveTo(seg.x0, seg.y0);
         }
