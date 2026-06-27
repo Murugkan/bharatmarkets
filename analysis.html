@@ -2275,9 +2275,12 @@ function drawCandlestick(s){
     const visPts = pts.filter(p => p.x >= PAD.l && p.x <= PAD.l + cW);
     const scaleSource = visPts.length >= 1 ? visPts : pts;
     const vals = scaleSource.map(p=>p.v);
-    const rawMin = Math.min(...vals)*0.92, rawMax = Math.max(...vals)*1.08;
-    const rawMid = (rawMin + rawMax) / 2;
-    const vRng = (rawMax - rawMin || 1) / (S.yAxisZoom || 1);
+    const rawMin = Math.min(...vals), rawMax = Math.max(...vals);
+    const rawSpan = (rawMax - rawMin) || Math.abs(rawMin) || 1;
+    const pad = rawSpan * 0.08;
+    const paddedMin = rawMin - pad, paddedMax = rawMax + pad;
+    const rawMid = (paddedMin + paddedMax) / 2;
+    const vRng = (paddedMax - paddedMin) / (S.yAxisZoom || 1);
     const vMin = rawMid - vRng / 2, vMax = rawMid + vRng / 2;
     // Use top 80% of chart height, leaving room for x-axis labels at bottom
     const yTop = PAD.t + 4, yBot = H - PAD.b - 16;
