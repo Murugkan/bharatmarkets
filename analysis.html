@@ -1960,9 +1960,9 @@ function drawCandlestick(s){
     kpiPoints = [];
   
   const wrap=document.getElementById('chart-wrap');
-  // offsetWidth gives the rendered pixel width — reliable after DOM paint
-  const W2=Math.max(wrap?wrap.offsetWidth:0, cv.offsetWidth, 280);
-  const H2=Math.max(wrap?wrap.offsetHeight:0, cv.offsetHeight, 200);
+  // Use wrap dimensions only — never cv.offsetWidth which reflects the last drawn size
+  const W2=Math.max(wrap?wrap.offsetWidth:0, 280);
+  const H2=Math.max(wrap?wrap.offsetHeight:0, 200);
   const dpr=window.devicePixelRatio||1;
   const needResize = cv.width!==W2*dpr || cv.height!==H2*dpr;
   if(needResize){ cv.width=W2*dpr; cv.height=H2*dpr; cv.style.width=W2+'px'; cv.style.height=H2+'px'; }
@@ -2455,11 +2455,6 @@ function drawCandlestick(s){
       const y = yTop_ax + frac * (yBot_ax - yTop_ax);
       ctx.fillText(`${Math.round((1-frac)*100)}%`, W - 3, y);
     }
-    // DEBUG: show kpiPoints count — remove after confirming tooltips work
-    ctx.fillStyle = 'rgba(255,255,0,0.7)';
-    ctx.font = '9px monospace';
-    ctx.textAlign = 'left';
-    ctx.fillText(`dots:${kpiPoints.length}`, PAD.l+2, PAD.t+2);
   }
   } catch(e) {
     const cv = document.getElementById('cv-candle');
@@ -2661,27 +2656,10 @@ function showTip(id, borderCol, html, ex, ey) {
 
 function handleChartClick(e, canvas, W2, H2) {
   const br = canvas.getBoundingClientRect();
+  // Canvas CSS width should equal W2 (set via cv.style.width = W2+'px').
+  // scX accounts for any browser rescaling if the element is constrained by CSS.
   const scX = W2/br.width, scY = H2/br.height;
   const mx = (e.clientX-br.left)*scX, my = (e.clientY-br.top)*scY;
-
-  // DEBUG: show tap coordinates and nearest dot
-  if(kpiPoints.length) {
-    let best = null, bestDist = Infinity;
-    for(let i = kpiPoints.length-1; i >= 0; i--){
-      const kpi = kpiPoints[i];
-      const dx = mx-kpi.x, dy = my-kpi.y;
-      const dist = Math.sqrt(dx*dx+dy*dy);
-      if(dist < bestDist){ bestDist = dist; best = kpi; }
-    }
-    // Show debug tooltip always when KPI dots exist
-    const ctx2 = canvas.getContext('2d');
-    const dpr = window.devicePixelRatio||1;
-    ctx2.setTransform(dpr,0,0,dpr,0,0);
-    ctx2.fillStyle='rgba(255,255,0,0.9)';
-    ctx2.font='10px monospace';
-    ctx2.textAlign='left';
-    ctx2.fillText(`tap:(${mx.toFixed(0)},${my.toFixed(0)}) nearest:(${best?best.x.toFixed(0):'?'},${best?best.y.toFixed(0):'?'}) dist:${bestDist.toFixed(0)} W2:${W2} br:${br.width.toFixed(0)}`, 8, H2-60);
-  }
 
   // 1. KPI overlay dots
   if(kpiPoints.length) {
