@@ -2078,23 +2078,18 @@ function drawCandlestick(s){
   ctx.lineWidth=1.5;  // ✅ Slightly thicker
   ctx.beginPath();ctx.moveTo(W-PAD.r,0);ctx.lineTo(W-PAD.r,H);ctx.stroke();
 
-  // Price labels — suppressed when KPI overlays are active (each KPI has its own
-  // independent normalised scale; showing price axis numbers would be misleading).
+  // Determine if any KPI overlays are active (needed for axis label logic below)
   const _anyKpiOn = Object.values(S.kpiVis||{}).some(Boolean);
-  ctx.fillStyle='rgba(255,255,255,1)';
-  ctx.font='bold 11px JetBrains Mono,monospace';
-  ctx.textAlign='right'; ctx.textBaseline='middle';
+
+  // Price labels (shown only when KPI overlays are off; KPI mode draws its own axis below)
   if(!_anyKpiOn){
+    ctx.fillStyle='rgba(255,255,255,1)';
+    ctx.font='bold 11px JetBrains Mono,monospace';
+    ctx.textAlign='right'; ctx.textBaseline='middle';
     for(let i=0;i<=8;i++){
       const y=PAD.t+(cH/8)*i;
       ctx.fillText(fmtIN(zMx-(zMx-zMn)*(i/8)),W-3,y);
     }
-  } else {
-    // KPI mode: show current price only, and a small "KPI" indicator
-    ctx.fillStyle='rgba(255,255,255,0.35)';
-    ctx.font='bold 9px JetBrains Mono,monospace';
-    ctx.fillText('KPI', W-3, PAD.t+8);
-    ctx.fillText('mode', W-3, PAD.t+20);
   }
 
   // Clip all chart drawing to chart area — nothing bleeds into right axis strip
@@ -2181,8 +2176,7 @@ function drawCandlestick(s){
   });
 
   // ── KPI overlays on price chart ──────────────────────────────────
-  const anyKpiOn = Object.values(S.kpiVis).some(Boolean);
-  const quarterly = anyKpiOn ? getQuarterlyData(s) : null;
+  const quarterly = _anyKpiOn ? getQuarterlyData(s) : null;
 
   const KPI_DEFS = [
     // Income Statement
@@ -2339,18 +2333,16 @@ function drawCandlestick(s){
     const rawMid = (scaleMin + scaleMax) / 2;
     const vRng = (scaleMax - scaleMin) / (S.yAxisZoom || 1);
     const vMin = rawMid - vRng / 2, vMax = rawMid + vRng / 2;
-    // Use top 80% of chart height, leaving room for x-axis labels at bottom
-    const yTop = PAD.t + 4, yBot = H - PAD.b - 16;
+    const yTop = PAD.t + 4, yBot = H - PAD.b - 4;
     const kpiY = v => yBot - ((v - vMin) / vRng) * (yBot - yTop);
 
     ctx.save();
-    // Hard clip to chart area — prevents any line from escaping into axes or padding
     ctx.beginPath();
     ctx.rect(PAD.l, PAD.t, cW, H - PAD.t - PAD.b);
     ctx.clip();
     ctx.strokeStyle = col; ctx.lineWidth = 1.5;
 
-    // Viewport / clip bounds — used by Cohen-Sutherland clipper in drawLine block
+    // Viewport / clip bounds — must match kpiY range exactly
     const xLeft  = PAD.l;
     const xRight = PAD.l + cW;
     const yTop2  = PAD.t;
@@ -2435,6 +2427,28 @@ function drawCandlestick(s){
 
     ctx.restore(); // restore clip
   });
+
+  // Draw KPI y-axis labels using the scale of a representative visible KPI.
+  // Each KPI has its own normalised scale; we show the axis for the first one
+  // that has a cached scale, giving the user a reference for approximate values.
+  if(_anyKpiOn && s._kpiScale){
+    const repKey = KPI_DEFS.find(d => S.kpiVis[d.k] && s._kpiScale[d.k])?.k;
+    if(repKey){
+      const sc = s._kpiScale[repKey];
+      const yTop_ax = PAD.t + 4, yBot_ax = H - PAD.b - 4;
+      const axVMin = sc.sMin, axVMax = sc.sMax;
+      const axRng = axVMax - axVMin || 1;
+      ctx.fillStyle = 'rgba(255,255,255,0.55)';
+      ctx.font = 'bold 10px JetBrains Mono,monospace';
+      ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+      for(let i = 0; i <= 8; i++){
+        const frac = i / 8;
+        const v = axVMax - frac * axRng;
+        const y = yTop_ax + frac * (yBot_ax - yTop_ax);
+        ctx.fillText(fmtIN(v), W - 3, y);
+      }
+    }
+  }
   } catch(e) {
     const cv = document.getElementById('cv-candle');
     if(cv) {
