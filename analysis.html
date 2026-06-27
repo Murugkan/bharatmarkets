@@ -2378,22 +2378,15 @@ function drawCandlestick(s){
       }
 
       // Draw clipped polyline using Cohen-Sutherland for all segments.
-      // Segments where one endpoint is off-screen-x are clipped at the boundary,
-      // preserving continuity as the user pans. However, if the off-screen
-      // endpoint is ALSO outside y-bounds (its value is an outlier relative to
-      // the current scale), skip that segment — it would produce a corner-entry
-      // artifact from the top/bottom edge of the chart.
+      // clipSeg handles all 4 boundaries. Skip only when both points are
+      // on the same off-screen side (guaranteed nothing to draw).
       let penX=null, penY=null;
       for(let j=1; j<pts.length; j++){
         const a=pts[j-1], b=pts[j];
         const ax=a.x, ay=kpiY(a.v), bx=b.x, by=kpiY(b.v);
-        const aXout = ax < xLeft || ax > xRight;
-        const bXout = bx < xLeft || bx > xRight;
-        const aYout = ay < yTop2 || ay > yBot2;
-        const bYout = by < yTop2 || by > yBot2;
-        // Skip if off-screen endpoint is also outside y — would enter from corner
-        if(aXout && aYout){ penX=null; continue; }
-        if(bXout && bYout){ penX=null; continue; }
+        // Skip only if both endpoints are off-screen on the same x-side
+        if(ax < xLeft && bx < xLeft){ penX=null; continue; }
+        if(ax > xRight && bx > xRight){ penX=null; continue; }
         const seg = clipSeg(ax,ay,bx,by);
         if(!seg){ penX=null; continue; }
         if(penX===null || Math.abs(seg.x0-penX)>0.5 || Math.abs(seg.y0-penY)>0.5){
