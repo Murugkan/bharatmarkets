@@ -1582,6 +1582,7 @@ function getSlicedCandles(s, canvasWidth){
     }
 
     s._dailyCache = [...phantoms, ...priceCandles];
+    s._kpiScale = null; // invalidate KPI scale cache when price data is rebuilt
     // Pre-parse timestamps for fast date math
     s._dailyCache.forEach(b => { if(!b._t) b._t = new Date(b.d).getTime(); });
   }
@@ -2257,6 +2258,38 @@ function drawCandlestick(s){
     return allCandles.length ? (allCandles.find(b=>b.c>0)||{c:0}).c : (resolveField(s, 'ltp') || 0);
   }
 
+  // Pre-compute per-KPI y-scale from FULL history (all quarterly data points),
+  // cached on the stock object so it is computed once and stable across pan/zoom.
+  // Using P10–P90 percentile range to exclude extreme outliers (e.g. CCR spikes).
+  if(!s._kpiScale && quarterly && quarterly.length){
+    s._kpiScale = {};
+    KPI_DEFS.forEach(({k})=>{
+      let allVals;
+      if(k === 'pe'){
+        allVals = quarterly
+          .filter(q => q.eps > 0)
+          .map(q => { const p = priceAt(q.d); return p > 0 ? p / (q.eps * 4) : null; })
+          .filter(v => v != null && isFinite(v));
+      } else {
+        allVals = quarterly.map(q => q[k]).filter(v => v != null && !isNaN(v));
+      }
+      if(!allVals.length){ s._kpiScale[k] = null; return; }
+      allVals.sort((a,b) => a-b);
+      let sMin, sMax;
+      if(allVals.length >= 5){
+        const p10 = allVals[Math.floor(allVals.length*0.10)];
+        const p90 = allVals[Math.floor(allVals.length*0.90)];
+        const expand = (p90 - p10) * 0.20 || Math.abs(p10) * 0.20 || 1;
+        sMin = p10 - expand; sMax = p90 + expand;
+      } else {
+        const mn = allVals[0], mx = allVals[allVals.length-1];
+        const span = (mx - mn) || Math.abs(mn) || 1;
+        sMin = mn - span*0.08; sMax = mx + span*0.08;
+      }
+      s._kpiScale[k] = { sMin, sMax };
+    });
+  }
+
   // Draw KPI overlays
   try {
   KPI_DEFS.forEach(({k, label, col})=>{
@@ -2299,39 +2332,10 @@ function drawCandlestick(s){
 
     const drawLine = pts.length >= 2;
 
-    // Map values to Y using a DEDICATED right-side scale for this KPI
-    // This avoids the problem of small PE values (eg 18x) mapping to price range (eg 500-800)
-    // Y-scale is derived from VISIBLE points only — off-screen-right points (retained
-    // Y-scale from visible points only. If no points are on screen, use the
-    // two nearest points (one off each side) to estimate what would be visible.
-    const visPts = pts.filter(p => p.x >= PAD.l && p.x <= PAD.l + cW);
-    let scaleSource;
-    if(visPts.length >= 1){
-      scaleSource = visPts;
-    } else {
-      const offLeft  = pts.filter(p => p.x < PAD.l).sort((a,b) => b.x - a.x)[0];
-      const offRight = pts.filter(p => p.x > PAD.l + cW).sort((a,b) => a.x - b.x)[0];
-      scaleSource = [offLeft, offRight].filter(Boolean);
-      if(!scaleSource.length) scaleSource = pts;
-    }
-    // Y-scale: use 10th–90th percentile range to exclude extreme outliers.
-    // This prevents a single volatile value (e.g. CCR=-109 for a bank) from
-    // collapsing all lines into a tiny band with a large dead zone.
-    let vals = scaleSource.map(p=>p.v).sort((a,b)=>a-b);
-    let scaleMin, scaleMax;
-    if(vals.length >= 5){
-      const p10 = vals[Math.floor(vals.length*0.10)];
-      const p90 = vals[Math.floor(vals.length*0.90)];
-      scaleMin = p10; scaleMax = p90;
-      // Expand by 20% so p10/p90 values don't sit at the exact chart edge
-      const expand = (scaleMax - scaleMin) * 0.20 || Math.abs(scaleMin) * 0.20 || 1;
-      scaleMin -= expand; scaleMax += expand;
-    } else {
-      // Fewer than 5 points — use full range with standard 8% padding
-      scaleMin = Math.min(...vals); scaleMax = Math.max(...vals);
-      const span = (scaleMax - scaleMin) || Math.abs(scaleMin) || 1;
-      scaleMin -= span*0.08; scaleMax += span*0.08;
-    }
+    // Y-scale: fixed to full history range (cached on s._kpiScale), stable across pan/zoom.
+    const _sc = s._kpiScale?.[k];
+    const scaleMin = _sc ? _sc.sMin : Math.min(...pts.map(p=>p.v));
+    const scaleMax = _sc ? _sc.sMax : Math.max(...pts.map(p=>p.v));
     const rawMid = (scaleMin + scaleMax) / 2;
     const vRng = (scaleMax - scaleMin) / (S.yAxisZoom || 1);
     const vMin = rawMid - vRng / 2, vMax = rawMid + vRng / 2;
