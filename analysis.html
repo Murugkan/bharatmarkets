@@ -2272,8 +2272,8 @@ function drawCandlestick(s){
       if(!allVals.length){ s._kpiScale[k] = null; return; }
       allVals.sort((a,b) => a-b);
       const mn = allVals[0], mx = allVals[allVals.length-1];
-      // Pad by 5% of total range so extreme values don't sit exactly at chart edge
-      const span = (mx - mn) || Math.abs(mn) || 1;
+      // Guard against constant metrics (e.g. Promoter% always 50.17)
+      const span = (mx - mn) || Math.abs(mn) * 0.10 || 1;
       const pad  = span * 0.05;
       s._kpiScale[k] = { sMin: mn - pad, sMax: mx + pad };
     });
@@ -2326,7 +2326,10 @@ function drawCandlestick(s){
     const scaleMin = _sc ? _sc.sMin : _mn - _sp*0.05;
     const scaleMax = _sc ? _sc.sMax : _mx + _sp*0.05;
     const rawMid = (scaleMin + scaleMax) / 2;
-    const vRng = (scaleMax - scaleMin) / (S.yAxisZoom || 1);
+    // Guard against zero range (e.g. Promoter% constant at 50.17 for all years)
+    // Use 10% of the value as minimum span, or 1 if value is 0
+    const _vSpan = scaleMax - scaleMin || Math.abs(rawMid) * 0.10 || 1;
+    const vRng = _vSpan / (S.yAxisZoom || 1);
     const vMin = rawMid - vRng / 2, vMax = rawMid + vRng / 2;
     const yTop = PAD.t + 4, yBot = H - PAD.b - 4;
     const kpiY = v => yBot - ((v - vMin) / vRng) * (yBot - yTop);
@@ -2658,13 +2661,12 @@ function handleChartClick(e, canvas, W2, H2) {
     }
     const kpiHit = best;
     if(kpiHit) {
-      const dispVal = kpiHit.key==='pe'       ? kpiHit.value.toFixed(1)+'x'   :
-                      kpiHit.key==='opm'      ? kpiHit.value.toFixed(1)+'%'   :
-                      kpiHit.key==='promoter' ? kpiHit.value.toFixed(2)+'%'   :
-                      kpiHit.key==='roce'     ? kpiHit.value.toFixed(1)+'%'   :
-                      kpiHit.key==='divpayout'? kpiHit.value.toFixed(1)+'%'   :
-                      kpiHit.key==='ccr'      ? kpiHit.value.toFixed(1)+'%'   :
-                      kpiHit.key==='eps'      ? '₹'+kpiHit.value.toFixed(2)   :
+      const _pctKeys = new Set(['opm','promoter','roce','divpayout','ccr']);
+      const _ratioKeys = new Set(['pe']);
+      const _rsKeys = new Set(['eps']);
+      const dispVal = _ratioKeys.has(kpiHit.key) ? kpiHit.value.toFixed(1)+'x' :
+                      _pctKeys.has(kpiHit.key)   ? kpiHit.value.toFixed(1)+'%' :
+                      _rsKeys.has(kpiHit.key)     ? '₹'+kpiHit.value.toFixed(2) :
                       Math.abs(kpiHit.value)>=1000 ? (kpiHit.value/1000).toFixed(1)+'K Cr' :
                       kpiHit.value.toFixed(0)+' Cr';
       showTip('kpi-overlay-tooltip', kpiHit.col,
