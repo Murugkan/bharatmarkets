@@ -2302,17 +2302,12 @@ function drawCandlestick(s){
     // Clamp a y pixel value to the chart's vertical bounds
     const clampY = y => Math.max(yTop2, Math.min(yBot2, y));
 
-    // Interpolate pixel y where segment [x0,y0]->[x1,y1] crosses x=xBound.
-    // Returns null if the interpolated y is outside the vertical chart bounds
-    // (meaning the line approaches from above/below, not from the side).
+    // Interpolate pixel y where segment [x0,y0]->[x1,y1] crosses x=xBound,
+    // clamped to chart vertical bounds so lines always enter/exit at the edge.
     function interpX(x0, y0, x1, y1, xBound){
-      if(x1 === x0) return null;
+      if(x1 === x0) return clampY((y0 + y1) / 2);
       const t = (xBound - x0) / (x1 - x0);
-      const y = y0 + t * (y1 - y0);
-      // If the crossing point is outside vertical bounds, don't interpolate —
-      // the line is entering from top/bottom, not from the side
-      if(y < yTop2 - 2 || y > yBot2 + 2) return null;
-      return y;
+      return clampY(y0 + t * (y1 - y0));
     }
 
     if(drawLine){
@@ -2341,46 +2336,39 @@ function drawCandlestick(s){
           if(!penDown){ ctx.moveTo(prevX, prevY); penDown = true; }
           ctx.lineTo(px, py);
         } else if(inView && !prevIn){
-          // Entering viewport — interpolate left or right edge entry
+          // Entering viewport — draw from left/right edge intersection
           if(prevX < xLeft){
             const iy = interpX(prevX, prevY, px, py, xLeft);
-            if(iy !== null){
-              ctx.moveTo(xLeft, iy); penDown = true;
-              ctx.lineTo(px, py);
-            } else {
-              // Off-screen point outside y range — start clean at in-view point
-              ctx.moveTo(px, py); penDown = true;
-            }
+            ctx.moveTo(xLeft, iy); penDown = true;
+            ctx.lineTo(px, py);
           } else {
-            // Entering from right (panned past this point) — moveTo current
+            // Entering from right (panned) — moveTo current
             ctx.moveTo(px, py); penDown = true;
           }
         } else if(!inView && prevIn){
           if(px > xRight){
-            // Exiting right — draw to right edge intersection and stop
+            // Exiting right — draw to right edge
             const iy = interpX(prevX, prevY, px, py, xRight);
             if(!penDown){ ctx.moveTo(prevX, prevY); penDown = true; }
-            if(iy !== null) ctx.lineTo(xRight, iy);
+            ctx.lineTo(xRight, iy);
             penDown = false;
           } else {
-            // Exiting left — draw to left edge intersection
+            // Exiting left — draw to left edge
             const iy = interpX(prevX, prevY, px, py, xLeft);
             if(!penDown){ ctx.moveTo(prevX, prevY); penDown = true; }
-            if(iy !== null) ctx.lineTo(xLeft, iy);
+            ctx.lineTo(xLeft, iy);
             penDown = false;
           }
         } else if(!prevIn && !inView){
-          // Both off-screen: check if segment crosses the viewport entirely
+          // Both off-screen: draw through viewport if segment spans it
           if(prevX < xLeft && px > xRight){
             const iyL = interpX(prevX, prevY, px, py, xLeft);
             const iyR = interpX(prevX, prevY, px, py, xRight);
-            if(iyL !== null && iyR !== null){
-              ctx.moveTo(xLeft, iyL);
-              ctx.lineTo(xRight, iyR);
-            }
+            ctx.moveTo(xLeft, iyL);
+            ctx.lineTo(xRight, iyR);
             penDown = false;
           }
-          // else truly off-screen on same side — skip
+          // same side — skip
         }
       }
       ctx.stroke();
