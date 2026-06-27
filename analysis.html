@@ -2252,9 +2252,11 @@ function drawCandlestick(s){
     return allCandles.length ? (allCandles.find(b=>b.c>0)||{c:0}).c : (resolveField(s, 'ltp') || 0);
   }
 
-  // Pre-compute per-KPI y-scale from FULL history (all quarterly data points),
+  // Pre-compute per-KPI y-scale from FULL history (all data points),
   // cached on the stock object so it is computed once and stable across pan/zoom.
-  // Using P10–P90 percentile range to exclude extreme outliers (e.g. CCR spikes).
+  // Scale covers the FULL value range (all values map within [yTop, yBot]).
+  // P10-P90 is used only to compute symmetric padding around the core range,
+  // preventing a single extreme outlier from dominating the visual center.
   if(!s._kpiScale && quarterly && quarterly.length){
     s._kpiScale = {};
     KPI_DEFS.forEach(({k})=>{
@@ -2269,18 +2271,11 @@ function drawCandlestick(s){
       }
       if(!allVals.length){ s._kpiScale[k] = null; return; }
       allVals.sort((a,b) => a-b);
-      let sMin, sMax;
-      if(allVals.length >= 5){
-        const p10 = allVals[Math.floor(allVals.length*0.10)];
-        const p90 = allVals[Math.floor(allVals.length*0.90)];
-        const expand = (p90 - p10) * 0.20 || Math.abs(p10) * 0.20 || 1;
-        sMin = p10 - expand; sMax = p90 + expand;
-      } else {
-        const mn = allVals[0], mx = allVals[allVals.length-1];
-        const span = (mx - mn) || Math.abs(mn) || 1;
-        sMin = mn - span*0.08; sMax = mx + span*0.08;
-      }
-      s._kpiScale[k] = { sMin, sMax };
+      const mn = allVals[0], mx = allVals[allVals.length-1];
+      // Pad by 5% of total range so extreme values don't sit exactly at chart edge
+      const span = (mx - mn) || Math.abs(mn) || 1;
+      const pad  = span * 0.05;
+      s._kpiScale[k] = { sMin: mn - pad, sMax: mx + pad };
     });
   }
 
@@ -2325,8 +2320,11 @@ function drawCandlestick(s){
 
     // Y-scale: fixed to full history range (cached on s._kpiScale), stable across pan/zoom.
     const _sc = s._kpiScale?.[k];
-    const scaleMin = _sc ? _sc.sMin : Math.min(...pts.map(p=>p.v));
-    const scaleMax = _sc ? _sc.sMax : Math.max(...pts.map(p=>p.v));
+    const _allV = pts.map(p=>p.v);
+    const _mn = Math.min(..._allV), _mx = Math.max(..._allV);
+    const _sp = (_mx-_mn)||Math.abs(_mn)||1;
+    const scaleMin = _sc ? _sc.sMin : _mn - _sp*0.05;
+    const scaleMax = _sc ? _sc.sMax : _mx + _sp*0.05;
     const rawMid = (scaleMin + scaleMax) / 2;
     const vRng = (scaleMax - scaleMin) / (S.yAxisZoom || 1);
     const vMin = rawMid - vRng / 2, vMax = rawMid + vRng / 2;
