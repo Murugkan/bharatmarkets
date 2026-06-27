@@ -2174,11 +2174,25 @@ function drawCandlestick(s){
   // Use FULL candle history for price lookups — not just visible slice
   // (allCandles, visFirst, visRange, allFirst, allRange already defined above)
 
+  // Compute the earliest KPI date across all active KPIs so xForDate can
+  // extend the time axis left of the oldest price candle (e.g. AFCONS IPO stocks
+  // have price history only from late 2024 but annual KPI data from 2020+).
+  const _kpiDates = quarterly ? quarterly.map(q => new Date(q.d).getTime()).filter(Boolean) : [];
+  const kpiEarliest = _kpiDates.length ? Math.min(..._kpiDates) : visFirst;
+  // The x-axis anchor is the LAST visible candle at the right edge.
+  // Everything is placed relative to that fixed right anchor using wall-clock time.
+  const xAnchorT  = visLast;                          // timestamp at right edge
+  const xAnchorPx = PAD.l + cW;                       // pixel at right edge
+  // Time range covers from earliest KPI date to last visible candle
+  const extFirst   = Math.min(kpiEarliest, visFirst);
+  const extRange   = (xAnchorT - extFirst) || 1;
+
   function xForDate(dateStr){
     // Parse date string YYYY-MM-DD to timestamp without new Date() overhead
     const p = dateStr.split('-');
     const t = Date.UTC(+p[0], +p[1]-1, +p[2]);
-    return PAD.l + ((t - visFirst) / visRange) * cW;
+    // Map t proportionally: visLast → right edge (PAD.l + cW), extFirst → left of canvas
+    return PAD.l + ((t - extFirst) / extRange) * cW;
   }
 
   // Search FULL history for price on/before a date
@@ -2188,10 +2202,6 @@ function drawCandlestick(s){
     }
     return allCandles.length ? allCandles[0].c : (resolveField(s, 'ltp') || 0);
   }
-
-  // Log raw quarterly data once (commented out - uncomment for debugging)
-  // if(quarterly.length){
-  //  // }
 
   // Draw KPI overlays
   try {
@@ -2220,7 +2230,7 @@ function drawCandlestick(s){
         }
       }
 
-      // Wide margin so annual dots just outside viewport still anchor the line
+      // Wide margin so dots just outside viewport still anchor the line visually
       pts = pts.filter(p => p.x >= PAD.l - cW && p.x <= PAD.l + cW * 2);
 
       if(pts.length < 2) return;
