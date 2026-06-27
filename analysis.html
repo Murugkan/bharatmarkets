@@ -2296,12 +2296,20 @@ function drawCandlestick(s){
     const yTop2  = PAD.t;
     const yBot2  = H - PAD.b;
 
-    // Interpolate pixel y where segment crosses x=xBound, clamped to y viewport
+    // Clamp a y pixel value to the chart's vertical bounds
+    const clampY = y => Math.max(yTop2, Math.min(yBot2, y));
+
+    // Interpolate pixel y where segment [x0,y0]->[x1,y1] crosses x=xBound.
+    // Returns null if the interpolated y is outside the vertical chart bounds
+    // (meaning the line approaches from above/below, not from the side).
     function interpX(x0, y0, x1, y1, xBound){
-      if(x1 === x0) return (y0 + y1) / 2;
+      if(x1 === x0) return null;
       const t = (xBound - x0) / (x1 - x0);
       const y = y0 + t * (y1 - y0);
-      return Math.max(yTop2, Math.min(yBot2, y));
+      // If the crossing point is outside vertical bounds, don't interpolate —
+      // the line is entering from top/bottom, not from the side
+      if(y < yTop2 - 2 || y > yBot2 + 2) return null;
+      return y;
     }
 
     if(drawLine){
@@ -2333,8 +2341,13 @@ function drawCandlestick(s){
           // Entering viewport — interpolate left or right edge entry
           if(prevX < xLeft){
             const iy = interpX(prevX, prevY, px, py, xLeft);
-            ctx.moveTo(xLeft, iy); penDown = true;
-            ctx.lineTo(px, py);
+            if(iy !== null){
+              ctx.moveTo(xLeft, iy); penDown = true;
+              ctx.lineTo(px, py);
+            } else {
+              // Off-screen point outside y range — start clean at in-view point
+              ctx.moveTo(px, py); penDown = true;
+            }
           } else {
             // Entering from right (panned past this point) — moveTo current
             ctx.moveTo(px, py); penDown = true;
@@ -2344,13 +2357,13 @@ function drawCandlestick(s){
             // Exiting right — draw to right edge intersection and stop
             const iy = interpX(prevX, prevY, px, py, xRight);
             if(!penDown){ ctx.moveTo(prevX, prevY); penDown = true; }
-            ctx.lineTo(xRight, iy);
+            if(iy !== null) ctx.lineTo(xRight, iy);
             penDown = false;
           } else {
             // Exiting left — draw to left edge intersection
             const iy = interpX(prevX, prevY, px, py, xLeft);
             if(!penDown){ ctx.moveTo(prevX, prevY); penDown = true; }
-            ctx.lineTo(xLeft, iy);
+            if(iy !== null) ctx.lineTo(xLeft, iy);
             penDown = false;
           }
         } else if(!prevIn && !inView){
@@ -2358,8 +2371,10 @@ function drawCandlestick(s){
           if(prevX < xLeft && px > xRight){
             const iyL = interpX(prevX, prevY, px, py, xLeft);
             const iyR = interpX(prevX, prevY, px, py, xRight);
-            ctx.moveTo(xLeft, iyL);
-            ctx.lineTo(xRight, iyR);
+            if(iyL !== null && iyR !== null){
+              ctx.moveTo(xLeft, iyL);
+              ctx.lineTo(xRight, iyR);
+            }
             penDown = false;
           }
           // else truly off-screen on same side — skip
