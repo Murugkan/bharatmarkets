@@ -2648,13 +2648,23 @@ function handleChartClick(e, canvas, W2, H2) {
 
   // 1. KPI overlay dots
   if(kpiPoints.length) {
-    const kpiHit = kpiPoints.find(kpi => {
+    // Find the NEAREST dot within tap radius (last drawn = visually on top gets priority via sort)
+    let best = null, bestDist = 18; // 18px tap radius for mobile
+    for(let i = kpiPoints.length-1; i >= 0; i--){
+      const kpi = kpiPoints[i];
       const dx = mx-kpi.x, dy = my-kpi.y;
-      return Math.sqrt(dx*dx+dy*dy) <= kpi.radius;
-    });
+      const dist = Math.sqrt(dx*dx+dy*dy);
+      if(dist < bestDist){ bestDist = dist; best = kpi; }
+    }
+    const kpiHit = best;
     if(kpiHit) {
-      const dispVal = kpiHit.key==='pe'  ? kpiHit.value.toFixed(1)+'x' :
-                      kpiHit.key==='opm' ? kpiHit.value.toFixed(1)+'%' :
+      const dispVal = kpiHit.key==='pe'       ? kpiHit.value.toFixed(1)+'x'   :
+                      kpiHit.key==='opm'      ? kpiHit.value.toFixed(1)+'%'   :
+                      kpiHit.key==='promoter' ? kpiHit.value.toFixed(2)+'%'   :
+                      kpiHit.key==='roce'     ? kpiHit.value.toFixed(1)+'%'   :
+                      kpiHit.key==='divpayout'? kpiHit.value.toFixed(1)+'%'   :
+                      kpiHit.key==='ccr'      ? kpiHit.value.toFixed(1)+'%'   :
+                      kpiHit.key==='eps'      ? '₹'+kpiHit.value.toFixed(2)   :
                       Math.abs(kpiHit.value)>=1000 ? (kpiHit.value/1000).toFixed(1)+'K Cr' :
                       kpiHit.value.toFixed(0)+' Cr';
       showTip('kpi-overlay-tooltip', kpiHit.col,
