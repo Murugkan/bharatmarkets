@@ -2376,20 +2376,21 @@ function drawCandlestick(s){
         return null; // safety: failed to converge
       }
 
-      // Draw clipped polyline — only draw segments where both endpoints are
-      // within the x viewport. Off-screen endpoints have y values computed from
-      // a different (zoomed-out) scale, so edge-entry lines are misleading.
+      // Draw clipped polyline using Cohen-Sutherland for all segments.
+      // Segments where one endpoint is off-screen are clipped at the boundary,
+      // preserving visual continuity as the user pans.
       let penX=null, penY=null;
       for(let j=1; j<pts.length; j++){
         const a=pts[j-1], b=pts[j];
-        const ax=a.x, bx=b.x;
-        // Skip any segment where either endpoint is off-screen horizontally
-        if(ax < xLeft || ax > xRight || bx < xLeft || bx > xRight){
-          penX=null; continue;
-        }
-        const ay=kpiY(a.v), by=kpiY(b.v);
+        const ax=a.x, ay=kpiY(a.v), bx=b.x, by=kpiY(b.v);
         const seg = clipSeg(ax,ay,bx,by);
         if(!seg){ penX=null; continue; }
+        // If the clipped start is at a top/bottom boundary (not left/right),
+        // the off-screen point was outside y-bounds — lift pen to avoid
+        // lines entering from a top/bottom corner of the chart.
+        const atTopBot = Math.abs(seg.y0-yTop2)<0.5 || Math.abs(seg.y0-yBot2)<0.5;
+        const atLeftRight = Math.abs(seg.x0-xLeft)<0.5 || Math.abs(seg.x0-xRight)<0.5;
+        if(atTopBot && !atLeftRight){ penX=null; }
         if(penX===null || Math.abs(seg.x0-penX)>0.5 || Math.abs(seg.y0-penY)>0.5){
           ctx.moveTo(seg.x0, seg.y0);
         }
