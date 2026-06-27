@@ -2311,10 +2311,7 @@ function drawCandlestick(s){
         }
       }
 
-      // Keep points left of canvas only if close enough to anchor the line visually.
-      // No right-side clip: when panned far left, recent KPI dots sit far right
-      // of the viewport but must be retained so the line segment extends in from
-      // the right edge (dropping them would truncate the visible line).
+      // Keep points within 1 canvas-width of the left edge for line continuity.
       pts = pts.filter(p => p.x >= PAD.l - cW);
 
       if(pts.length < 2) return;
@@ -2384,15 +2381,22 @@ function drawCandlestick(s){
       }
 
       // Draw clipped polyline using Cohen-Sutherland for all segments.
-      // clipSeg handles all 4 boundaries. Skip only when both points are
-      // on the same off-screen side (guaranteed nothing to draw).
+      // When an off-screen-x point has kpiY outside chart bounds, it would
+      // produce a corner-entry line (entering from top/bottom edge). In that
+      // case reset the pen so the line starts fresh at the first in-view point.
+      const _cH = yBot2 - yTop2;
       let penX=null, penY=null;
       for(let j=1; j<pts.length; j++){
         const a=pts[j-1], b=pts[j];
         const ax=a.x, ay=kpiY(a.v), bx=b.x, by=kpiY(b.v);
-        // Skip only if both endpoints are off-screen on the same x-side
+        const aOffX = ax < xLeft || ax > xRight;
+        const bOffX = bx < xLeft || bx > xRight;
+        // Both off same x-side: nothing to draw
         if(ax < xLeft && bx < xLeft){ penX=null; continue; }
         if(ax > xRight && bx > xRight){ penX=null; continue; }
+        // Off-screen-x point with kpiY far outside bounds → corner entry → skip
+        if(aOffX && (ay < yTop2 - _cH || ay > yBot2 + _cH)){ penX=null; continue; }
+        if(bOffX && (by < yTop2 - _cH || by > yBot2 + _cH)){ penX=null; continue; }
         const seg = clipSeg(ax,ay,bx,by);
         if(!seg){ penX=null; continue; }
         if(penX===null || Math.abs(seg.x0-penX)>0.5 || Math.abs(seg.y0-penY)>0.5){
@@ -2428,25 +2432,18 @@ function drawCandlestick(s){
     ctx.restore(); // restore clip
   });
 
-  // Draw KPI y-axis labels using the scale of a representative visible KPI.
-  // Each KPI has its own normalised scale; we show the axis for the first one
-  // that has a cached scale, giving the user a reference for approximate values.
-  if(_anyKpiOn && s._kpiScale){
-    const repKey = KPI_DEFS.find(d => S.kpiVis[d.k] && s._kpiScale[d.k])?.k;
-    if(repKey){
-      const sc = s._kpiScale[repKey];
-      const yTop_ax = PAD.t + 4, yBot_ax = H - PAD.b - 4;
-      const axVMin = sc.sMin, axVMax = sc.sMax;
-      const axRng = axVMax - axVMin || 1;
-      ctx.fillStyle = 'rgba(255,255,255,0.55)';
-      ctx.font = 'bold 10px JetBrains Mono,monospace';
-      ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
-      for(let i = 0; i <= 8; i++){
-        const frac = i / 8;
-        const v = axVMax - frac * axRng;
-        const y = yTop_ax + frac * (yBot_ax - yTop_ax);
-        ctx.fillText(fmtIN(v), W - 3, y);
-      }
+  // KPI y-axis: show normalised scale (each KPI independently fills full height).
+  // A single numeric axis is misleading since each line uses its own scale.
+  // Show % of range (0% = min, 100% = max) as a universal reference.
+  if(_anyKpiOn){
+    const yTop_ax = PAD.t + 4, yBot_ax = H - PAD.b - 4;
+    ctx.fillStyle = 'rgba(255,255,255,0.45)';
+    ctx.font = 'bold 10px JetBrains Mono,monospace';
+    ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+    for(let i = 0; i <= 4; i++){
+      const frac = i / 4;
+      const y = yTop_ax + frac * (yBot_ax - yTop_ax);
+      ctx.fillText(`${Math.round((1-frac)*100)}%`, W - 3, y);
     }
   }
   } catch(e) {
