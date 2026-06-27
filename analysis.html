@@ -190,9 +190,7 @@ const S = {
   kpiControlsExpanded: false  // chart KPI/filter rows collapsed by default to maximize chart space
 };
 let candlestickBars = [];  // ✅ Track bar positions for click detection
-let kpiPoints = [];  // ✅ Track KPI overlay points for tooltip clicks
-let maPoints = [];   // Track MA line points for click/tooltip
-
+let kpiPoints = [];  // Track KPI overlay points for tooltip clicks
 
 // Helpers
 const num = (v) => typeof v === 'number' ? v : parseFloat(v) || 0;
@@ -1677,7 +1675,6 @@ function drawNavLine(s){
     const cv = document.getElementById('cv-candle');
     if(!cv) return;
     kpiPoints = [];
-    maPoints = [];
     candlestickBars = [];
 
     const wrap = document.getElementById('chart-wrap');
@@ -1960,7 +1957,6 @@ function drawCandlestick(s){
     
     // ✅ Clear KPI points before redrawing
     kpiPoints = [];
-    maPoints = [];
   
   const wrap=document.getElementById('chart-wrap');
   // offsetWidth gives the rendered pixel width — reliable after DOM paint
@@ -2014,15 +2010,6 @@ function drawCandlestick(s){
     }));
   }
   const allCandles = s._allCandlesCache;
-  candles.forEach(b => { if(!b._t) b._t = new Date(b.d).getTime(); });
-  const visFirst = candles.length ? candles[0]._t : 0;
-  const visLast  = candles.length ? candles[candles.length-1]._t : 1;
-  const visRange = visLast - visFirst || 1;
-  
-  // ✅ FIX: KPI overlays use FULL history range for correct positioning during pan
-  const allFirst = allCandles.length ? allCandles[0]._t : visFirst;
-  const allLast  = allCandles.length ? allCandles[allCandles.length-1]._t : visLast;
-  const allRange = allLast - allFirst || 1;
 
   const allPrices=candles.filter(c=>!c._phantom && c.c).flatMap(c=>[c.h,c.l]);
 
@@ -2084,8 +2071,6 @@ function drawCandlestick(s){
   }
 
   // Right axis separator (draw BEFORE labels so labels appear on top)
-  ctx.restore(); // end clip
-
   ctx.fillStyle='rgba(7,12,24,.8)';
   ctx.fillRect(W-PAD.r,0,PAD.r,H);
   ctx.strokeStyle='rgba(100,130,180,.6)';  // ✅ Brighter blue for visibility
@@ -2185,10 +2170,8 @@ function drawCandlestick(s){
   });
 
   // ── KPI overlays on price chart ──────────────────────────────────
-  // Skip KPI during active pan — no KPI data changes while panning
   const anyKpiOn = Object.values(S.kpiVis).some(Boolean);
   const quarterly = anyKpiOn ? getQuarterlyData(s) : null;
-  drawCandlestick._kpiLabelY = [];
 
   const KPI_DEFS = [
     // Income Statement
@@ -2215,8 +2198,7 @@ function drawCandlestick(s){
     {k:'divpayout', label:'DivPayout%',col:'#60a5fa'},
   ];
 
-  // Use FULL candle history for price lookups — not just visible slice
-  // (allCandles, visFirst, visRange, allFirst, allRange already defined above)
+  // Use FULL candle history for price lookups
 
   // xForDate: map a KPI date string to canvas x pixel.
   //
@@ -2621,12 +2603,10 @@ function drawVolume(s){
     const x = PAD.l + i*gap + gap/2 - panFrac;
     if(x > PAD.l+cW-8) return;
     ctx.textAlign = i===0 ? 'left' : (i===n-1 ? 'right' : 'center');
-    ctx.fillText(lbl, x, PAD.t + cH + 8);  // ✅ Below volume chart
+    ctx.fillText(lbl, x, PAD.t + cH + 8);
   });
+  ctx.restore(); // restore clip from save above volume bars
 }
-
-// ── Quarterly CFO bar panel ───────────────────────────
-// ── Quarterly P/E line panel ──────────────────────────
 
 // ── Tooltip helper ────────────────────────────────────
 function showTip(id, borderCol, html, ex, ey) {
@@ -2649,24 +2629,7 @@ function handleChartClick(e, canvas, W2, H2) {
   const scX = W2/br.width, scY = H2/br.height;
   const mx = (e.clientX-br.left)*scX, my = (e.clientY-br.top)*scY;
 
-  // 1. MA lines
-  if(maPoints.length) {
-    const maHit = maPoints.reduce((best, p) => {
-      const d = Math.sqrt((mx-p.x)**2 + (my-p.y)**2);
-      return d < (best.d||999) ? {p, d} : best;
-    }, {}).p;
-    if(maHit && Math.sqrt((mx-maHit.x)**2+(my-maHit.y)**2) <= 14) {
-      showTip('ma-tooltip', maHit.col,
-        `<div style="color:${maHit.col};font-weight:bold;margin-bottom:6px">${maHit.label}</div>
-         <div style="color:#aaa;font-size:11px;line-height:1.7">
-           <div>Date: <span style="color:#fff">${maHit.date}</span></div>
-           <div>Value: <span style="color:${maHit.col};font-weight:bold">₹${Math.round(maHit.value).toLocaleString('en-IN')}</span></div>
-         </div>`, e.clientX, e.clientY);
-      return;
-    }
-  }
-
-  // 2. KPI overlay dots
+  // 1. KPI overlay dots
   if(kpiPoints.length) {
     const kpiHit = kpiPoints.find(kpi => {
       const dx = mx-kpi.x, dy = my-kpi.y;
