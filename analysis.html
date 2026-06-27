@@ -2253,8 +2253,11 @@ function drawCandlestick(s){
         }
       }
 
-      // Wide margin so dots just outside viewport still anchor the line visually
-      pts = pts.filter(p => p.x >= PAD.l - cW && p.x <= PAD.l + cW * 2);
+      // Keep points left of canvas only if close enough to anchor the line visually.
+      // No right-side clip: when panned far left, recent KPI dots sit far right
+      // of the viewport but must be retained so the line segment extends in from
+      // the right edge (dropping them would truncate the visible line).
+      pts = pts.filter(p => p.x >= PAD.l - cW);
 
       if(pts.length < 2) return;
     } catch(e) {
