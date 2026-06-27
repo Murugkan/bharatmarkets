@@ -2270,7 +2270,11 @@ function drawCandlestick(s){
 
     // Map values to Y using a DEDICATED right-side scale for this KPI
     // This avoids the problem of small PE values (eg 18x) mapping to price range (eg 500-800)
-    const vals = pts.map(p=>p.v);
+    // Y-scale is derived from VISIBLE points only — off-screen-right points (retained
+    // so lines enter from the right edge correctly) must not distort the scale.
+    const visPts = pts.filter(p => p.x >= PAD.l && p.x <= PAD.l + cW);
+    const scaleSource = visPts.length >= 1 ? visPts : pts;
+    const vals = scaleSource.map(p=>p.v);
     const rawMin = Math.min(...vals)*0.92, rawMax = Math.max(...vals)*1.08;
     const rawMid = (rawMin + rawMax) / 2;
     const vRng = (rawMax - rawMin || 1) / (S.yAxisZoom || 1);
