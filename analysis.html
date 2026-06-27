@@ -2324,89 +2324,69 @@ function drawCandlestick(s){
     ctx.clip();
     ctx.strokeStyle = col; ctx.lineWidth = 1.5;
 
-    // Viewport x bounds
+    // Viewport / clip bounds — used by Cohen-Sutherland clipper in drawLine block
     const xLeft  = PAD.l;
     const xRight = PAD.l + cW;
     const yTop2  = PAD.t;
     const yBot2  = H - PAD.b;
 
-    // Clamp a y pixel value to the chart's vertical bounds
-    const clampY = y => Math.max(yTop2, Math.min(yBot2, y));
-
-    // Interpolate pixel y where segment [x0,y0]->[x1,y1] crosses x=xBound,
-    // clamped to chart vertical bounds so lines always enter/exit at the edge.
-    function interpX(x0, y0, x1, y1, xBound){
-      if(x1 === x0) return clampY((y0 + y1) / 2);
-      const t = (xBound - x0) / (x1 - x0);
-      return clampY(y0 + t * (y1 - y0));
-    }
-
     if(drawLine){
       ctx.globalAlpha = 0.9;
       ctx.beginPath();
-      let penDown = false;
-      for(let j = 0; j < pts.length; j++){
-        const p  = pts[j];
-        const px = p.x, py = clampY(kpiY(p.v));
-        const inView = px >= xLeft && px <= xRight;
 
-        if(j === 0){
-          if(inView){ ctx.moveTo(px, py); penDown = true; }
-          continue;
+      // Cohen-Sutherland region codes
+      const INSIDE=0,LEFT=1,RIGHT=2,BOTTOM=4,TOP=8;
+      const code = (x,y) => {
+        let c = INSIDE;
+        if(x < xLeft)  c |= LEFT;
+        else if(x > xRight) c |= RIGHT;
+        if(y > yBot2)  c |= BOTTOM;  // y increases downward
+        else if(y < yTop2) c |= TOP;
+        return c;
+      };
+
+      // Clip segment [x0,y0]->[x1,y1] to rect. Returns null if fully outside,
+      // else {x0,y0,x1,y1} clipped.
+      function clipSeg(x0,y0,x1,y1){
+        let c0=code(x0,y0), c1=code(x1,y1);
+        for(;;){
+          if(!(c0|c1)) return {x0,y0,x1,y1}; // trivially inside
+          if(c0&c1)    return null;            // trivially outside
+          const cout = c0 || c1;
+          let x,y;
+          const dx=x1-x0, dy=y1-y0;
+          if(cout&BOTTOM){ x = x0+dx*(yBot2-y0)/dy; y = yBot2; }
+          else if(cout&TOP){ x = x0+dx*(yTop2-y0)/dy; y = yTop2; }
+          else if(cout&RIGHT){ y = y0+dy*(xRight-x0)/dx; x = xRight; }
+          else { y = y0+dy*(xLeft-x0)/dx; x = xLeft; }
+          if(cout===c0){ x0=x; y0=y; c0=code(x0,y0); }
+          else         { x1=x; y1=y; c1=code(x1,y1); }
         }
+      }
 
-        const prev  = pts[j-1];
-        const prevX = prev.x, prevY = clampY(kpiY(prev.v));
-        const prevIn = prevX >= xLeft && prevX <= xRight;
-
-        if(inView && prevIn){
-          // Both in view — normal lineTo
-          if(!penDown){ ctx.moveTo(prevX, prevY); penDown = true; }
-          ctx.lineTo(px, py);
-        } else if(inView && !prevIn){
-          // Entering viewport — draw from left/right edge intersection
-          if(prevX < xLeft){
-            const iy = interpX(prevX, prevY, px, py, xLeft);
-            ctx.moveTo(xLeft, iy); penDown = true;
-            ctx.lineTo(px, py);
-          } else {
-            // Entering from right (panned) — moveTo current
-            ctx.moveTo(px, py); penDown = true;
-          }
-        } else if(!inView && prevIn){
-          if(px > xRight){
-            // Exiting right — draw to right edge
-            const iy = interpX(prevX, prevY, px, py, xRight);
-            if(!penDown){ ctx.moveTo(prevX, prevY); penDown = true; }
-            ctx.lineTo(xRight, iy);
-            penDown = false;
-          } else {
-            // Exiting left — draw to left edge
-            const iy = interpX(prevX, prevY, px, py, xLeft);
-            if(!penDown){ ctx.moveTo(prevX, prevY); penDown = true; }
-            ctx.lineTo(xLeft, iy);
-            penDown = false;
-          }
-        } else if(!prevIn && !inView){
-          // Both off-screen: draw through viewport if segment spans it
-          if(prevX < xLeft && px > xRight){
-            const iyL = interpX(prevX, prevY, px, py, xLeft);
-            const iyR = interpX(prevX, prevY, px, py, xRight);
-            ctx.moveTo(xLeft, iyL);
-            ctx.lineTo(xRight, iyR);
-            penDown = false;
-          }
-          // same side — skip
+      // Draw clipped polyline
+      let penX=null, penY=null;
+      for(let j=1; j<pts.length; j++){
+        const a=pts[j-1], b=pts[j];
+        const ax=a.x, ay=kpiY(a.v), bx=b.x, by=kpiY(b.v);
+        const seg = clipSeg(ax,ay,bx,by);
+        if(!seg){ penX=null; continue; }
+        // If clipped start differs from pen position, lift and move
+        if(penX===null || Math.abs(seg.x0-penX)>0.5 || Math.abs(seg.y0-penY)>0.5){
+          ctx.moveTo(seg.x0, seg.y0);
         }
+        ctx.lineTo(seg.x1, seg.y1);
+        penX=seg.x1; penY=seg.y1;
       }
       ctx.stroke();
     }
 
-    // Dots — only for on-screen points
+    // Dots — only for on-screen points within y bounds
     ctx.fillStyle = col; ctx.globalAlpha = 1;
     pts.forEach(p=>{
       if(p.x < xLeft || p.x > xRight) return;
-      const dotY = clampY(kpiY(p.v));
+      const dotY = kpiY(p.v);
+      if(dotY < yTop2 || dotY > yBot2) return; // skip if y out of bounds
       ctx.beginPath();
       ctx.arc(p.x, dotY, 2.5, 0, Math.PI*2);
       ctx.fill();
