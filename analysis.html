@@ -2304,25 +2304,26 @@ function drawCandlestick(s){
       scaleSource = [offLeft, offRight].filter(Boolean);
       if(!scaleSource.length) scaleSource = pts;
     }
-    // Outlier rejection: exclude values beyond 3× IQR from median to prevent
-    // a single extreme value (e.g. CCR=-286) from collapsing the y-scale.
+    // Y-scale: use 10th–90th percentile range to exclude extreme outliers.
+    // This prevents a single volatile value (e.g. CCR=-109 for a bank) from
+    // collapsing all lines into a tiny band with a large dead zone.
     let vals = scaleSource.map(p=>p.v).sort((a,b)=>a-b);
-    if(vals.length >= 4){
-      const q1 = vals[Math.floor(vals.length*0.25)];
-      const q3 = vals[Math.floor(vals.length*0.75)];
-      const iqr = q3 - q1;
-      if(iqr > 0){
-        const lo = q1 - 3*iqr, hi = q3 + 3*iqr;
-        const filtered = vals.filter(v => v >= lo && v <= hi);
-        if(filtered.length >= 1) vals = filtered;
-      }
+    let scaleMin, scaleMax;
+    if(vals.length >= 5){
+      const p10 = vals[Math.floor(vals.length*0.10)];
+      const p90 = vals[Math.floor(vals.length*0.90)];
+      scaleMin = p10; scaleMax = p90;
+      // Expand by 20% so p10/p90 values don't sit at the exact chart edge
+      const expand = (scaleMax - scaleMin) * 0.20 || Math.abs(scaleMin) * 0.20 || 1;
+      scaleMin -= expand; scaleMax += expand;
+    } else {
+      // Fewer than 5 points — use full range with standard 8% padding
+      scaleMin = Math.min(...vals); scaleMax = Math.max(...vals);
+      const span = (scaleMax - scaleMin) || Math.abs(scaleMin) || 1;
+      scaleMin -= span*0.08; scaleMax += span*0.08;
     }
-    const rawMin = Math.min(...vals), rawMax = Math.max(...vals);
-    const rawSpan = (rawMax - rawMin) || Math.abs(rawMin) || 1;
-    const pad = rawSpan * 0.08;
-    const paddedMin = rawMin - pad, paddedMax = rawMax + pad;
-    const rawMid = (paddedMin + paddedMax) / 2;
-    const vRng = (paddedMax - paddedMin) / (S.yAxisZoom || 1);
+    const rawMid = (scaleMin + scaleMax) / 2;
+    const vRng = (scaleMax - scaleMin) / (S.yAxisZoom || 1);
     const vMin = rawMid - vRng / 2, vMax = rawMid + vRng / 2;
     // Use top 80% of chart height, leaving room for x-axis labels at bottom
     const yTop = PAD.t + 4, yBot = H - PAD.b - 16;
