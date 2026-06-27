@@ -2347,19 +2347,16 @@ function drawCandlestick(s){
       let penDown = false;
       for(let j = 0; j < pts.length; j++){
         const p  = pts[j];
-        const px = p.x, py = kpiY(p.v);
+        const px = p.x, py = clampY(kpiY(p.v));
         const inView = px >= xLeft && px <= xRight;
 
         if(j === 0){
-          // Only start pen if first point is actually in view; otherwise
-          // let j===1 handle the left-entry interpolation
           if(inView){ ctx.moveTo(px, py); penDown = true; }
-          // off-screen: don't moveTo — j===1 will interpolate the entry point
           continue;
         }
 
         const prev  = pts[j-1];
-        const prevX = prev.x, prevY = kpiY(prev.v);
+        const prevX = prev.x, prevY = clampY(kpiY(prev.v));
         const prevIn = prevX >= xLeft && prevX <= xRight;
 
         if(inView && prevIn){
@@ -2408,13 +2405,14 @@ function drawCandlestick(s){
     // Dots — only for on-screen points
     ctx.fillStyle = col; ctx.globalAlpha = 1;
     pts.forEach(p=>{
-      if(p.x < xLeft || p.x > xRight) return; // skip off-screen dots
+      if(p.x < xLeft || p.x > xRight) return;
+      const dotY = clampY(kpiY(p.v));
       ctx.beginPath();
-      ctx.arc(p.x, kpiY(p.v), 2.5, 0, Math.PI*2);
+      ctx.arc(p.x, dotY, 2.5, 0, Math.PI*2);
       ctx.fill();
       kpiPoints.push({
         x: p.x,
-        y: kpiY(p.v),
+        y: dotY,
         label: label,
         value: p.v,
         date: p.d,
