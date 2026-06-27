@@ -2664,17 +2664,35 @@ function handleChartClick(e, canvas, W2, H2) {
   const scX = W2/br.width, scY = H2/br.height;
   const mx = (e.clientX-br.left)*scX, my = (e.clientY-br.top)*scY;
 
-  // 1. KPI overlay dots
+  // DEBUG: show tap coordinates and nearest dot
   if(kpiPoints.length) {
-    // Find the NEAREST dot within tap radius (last drawn = visually on top gets priority via sort)
-    let best = null, bestDist = 18; // 18px tap radius for mobile
+    let best = null, bestDist = Infinity;
     for(let i = kpiPoints.length-1; i >= 0; i--){
       const kpi = kpiPoints[i];
       const dx = mx-kpi.x, dy = my-kpi.y;
       const dist = Math.sqrt(dx*dx+dy*dy);
       if(dist < bestDist){ bestDist = dist; best = kpi; }
     }
-    const kpiHit = best;
+    // Show debug tooltip always when KPI dots exist
+    const ctx2 = canvas.getContext('2d');
+    const dpr = window.devicePixelRatio||1;
+    ctx2.setTransform(dpr,0,0,dpr,0,0);
+    ctx2.fillStyle='rgba(255,255,0,0.9)';
+    ctx2.font='10px monospace';
+    ctx2.textAlign='left';
+    ctx2.fillText(`tap:(${mx.toFixed(0)},${my.toFixed(0)}) nearest:(${best?best.x.toFixed(0):'?'},${best?best.y.toFixed(0):'?'}) dist:${bestDist.toFixed(0)} W2:${W2} br:${br.width.toFixed(0)}`, 8, H2-60);
+  }
+
+  // 1. KPI overlay dots
+  if(kpiPoints.length) {
+    let best2 = null, bestDist2 = 18;
+    for(let i = kpiPoints.length-1; i >= 0; i--){
+      const kpi = kpiPoints[i];
+      const dx = mx-kpi.x, dy = my-kpi.y;
+      const dist = Math.sqrt(dx*dx+dy*dy);
+      if(dist < bestDist2){ bestDist2 = dist; best2 = kpi; }
+    }
+    const kpiHit = best2;
     if(kpiHit) {
       const _pctKeys = new Set(['opm','promoter','roce','divpayout','ccr']);
       const _ratioKeys = new Set(['pe']);
