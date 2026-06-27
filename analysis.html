@@ -2174,38 +2174,35 @@ function drawCandlestick(s){
   // Use FULL candle history for price lookups — not just visible slice
   // (allCandles, visFirst, visRange, allFirst, allRange already defined above)
 
-  // xForDate: map a KPI date string to a canvas x pixel using the same
-  // index-based axis as barX() so KPI overlays track pan and zoom correctly.
+  // xForDate: map a KPI date string to canvas x pixel.
   //
-  // Strategy: find the KPI date's fractional position in allCandles[], then
-  // express that as an offset from candles[0] (the first visible bar, index 0).
-  // barX(i) handles the rest. For KPI dates older than allCandles[0] we
-  // extrapolate leftward using the average candle time-spacing, so annual
-  // financials older than the stock's price history (e.g. pre-IPO data) still
-  // appear at a sensible position to the left of the visible price bars.
+  // The candle axis is index-based (barX = PAD.l + i*gap + gap/2 - panFrac),
+  // so we map KPI dates to candle indices then to pixels via barX().
+  //
+  // For dates within allCandles range: binary search to get fractional index.
+  // For dates before allCandles[0]: extrapolate left using avg candle spacing.
+  // _kpiAllOffset converts allCandles[] index to candles[] (visible slice) index.
   const _avgCandleMs = allCandles.length > 1
     ? (allCandles[allCandles.length-1]._t - allCandles[0]._t) / (allCandles.length - 1)
-    : 30 * 24 * 3600 * 1000; // fallback: ~1 month
+    : 30 * 24 * 3600 * 1000;
 
-  // candles[0] sits at allCandles[allOffset]
-  // getSlicedCandles: end = allCandles.length - panIdx; slice = [end-vis .. end)
-  // so candles[0] = allCandles[allCandles.length - panIdx - candles.length]
+  // candles[j] = allCandles[_kpiAllOffset + j]
+  // getSlicedCandles: end = allCandles.length - panIdx; start = end - vis
+  // => candles[0] = allCandles[allCandles.length - panIdx - candles.length]
   const _kpiAllOffset = allCandles.length - Math.floor(S.panOffset) - candles.length;
 
   function xForDate(dateStr){
-    const p = dateStr.split('-');
-    const t = Date.UTC(+p[0], +p[1]-1, +p[2]);
+    const parts = dateStr.split('-');
+    const t = Date.UTC(+parts[0], +parts[1]-1, +parts[2]);
 
-    // Find fractional index in allCandles[] via binary search
-    let lo = 0, hi = allCandles.length - 1, fracIdx;
-    if(t <= allCandles[0]._t){
-      // Extrapolate left of oldest candle
-      fracIdx = (t - allCandles[0]._t) / _avgCandleMs;
-    } else if(t >= allCandles[hi]._t){
-      // Extrapolate right of newest candle
-      fracIdx = hi + (t - allCandles[hi]._t) / _avgCandleMs;
+    let fracIdx;
+    if(!allCandles.length){ fracIdx = 0; }
+    else if(t <= allCandles[0]._t){
+      fracIdx = (t - allCandles[0]._t) / _avgCandleMs; // negative for pre-history
+    } else if(t >= allCandles[allCandles.length-1]._t){
+      fracIdx = (allCandles.length - 1) + (t - allCandles[allCandles.length-1]._t) / _avgCandleMs;
     } else {
-      // Binary search for bracketing candles
+      let lo = 0, hi = allCandles.length - 1;
       while(lo < hi - 1){
         const mid = (lo + hi) >> 1;
         if(allCandles[mid]._t <= t) lo = mid; else hi = mid;
@@ -2213,8 +2210,6 @@ function drawCandlestick(s){
       const span = allCandles[hi]._t - allCandles[lo]._t || 1;
       fracIdx = lo + (t - allCandles[lo]._t) / span;
     }
-
-    // Convert allCandles index to candles[] (visible slice) index, then to pixels
     return barX(fracIdx - _kpiAllOffset);
   }
 
@@ -2271,9 +2266,19 @@ function drawCandlestick(s){
     // Map values to Y using a DEDICATED right-side scale for this KPI
     // This avoids the problem of small PE values (eg 18x) mapping to price range (eg 500-800)
     // Y-scale is derived from VISIBLE points only — off-screen-right points (retained
-    // so lines enter from the right edge correctly) must not distort the scale.
+    // Y-scale from visible points only. If no points are on screen, use the
+    // two nearest points (one off each side) to estimate what would be visible.
     const visPts = pts.filter(p => p.x >= PAD.l && p.x <= PAD.l + cW);
-    const scaleSource = visPts.length >= 1 ? visPts : pts;
+    let scaleSource;
+    if(visPts.length >= 1){
+      scaleSource = visPts;
+    } else {
+      // No points on screen — find nearest off-left and off-right
+      const offLeft  = pts.filter(p => p.x < PAD.l).sort((a,b) => b.x - a.x)[0];
+      const offRight = pts.filter(p => p.x > PAD.l + cW).sort((a,b) => a.x - b.x)[0];
+      scaleSource = [offLeft, offRight].filter(Boolean);
+      if(!scaleSource.length) scaleSource = pts;
+    }
     const vals = scaleSource.map(p=>p.v);
     const rawMin = Math.min(...vals), rawMax = Math.max(...vals);
     const rawSpan = (rawMax - rawMin) || Math.abs(rawMin) || 1;
