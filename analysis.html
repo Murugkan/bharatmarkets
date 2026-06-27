@@ -2290,17 +2290,72 @@ function drawCandlestick(s){
     ctx.clip();
     ctx.strokeStyle = col; ctx.lineWidth = 1.5; ctx.globalAlpha = 0.9;
 
+    // Viewport x bounds
+    const xLeft  = PAD.l;
+    const xRight = PAD.l + cW;
+
+    // Interpolate pixel (x,y) where segment [x0,y0]->[x1,y1] crosses x=xBound
+    function interpX(x0, y0, x1, y1, xBound){
+      const t = (xBound - x0) / (x1 - x0);
+      return y0 + t * (y1 - y0);
+    }
+
     if(drawLine){
-      // Line only — no fill
       ctx.globalAlpha = 0.9;
       ctx.beginPath();
-      pts.forEach((p,j)=>{ j===0 ? ctx.moveTo(p.x, kpiY(p.v)) : ctx.lineTo(p.x, kpiY(p.v)); });
+      let penDown = false;
+      for(let j = 0; j < pts.length; j++){
+        const p  = pts[j];
+        const px = p.x, py = kpiY(p.v);
+        const inView = px >= xLeft && px <= xRight;
+
+        if(j === 0){
+          if(inView){ ctx.moveTo(px, py); penDown = true; }
+          else if(px > xRight){ /* first point off right — handled when next comes in */ penDown = false; }
+          else { ctx.moveTo(px, py); penDown = true; } // off left — still moveTo for continuity
+          continue;
+        }
+
+        const prev  = pts[j-1];
+        const prevX = prev.x, prevY = kpiY(prev.v);
+        const prevIn = prevX >= xLeft && prevX <= xRight;
+
+        if(inView && prevIn){
+          // Both in view — normal lineTo
+          if(!penDown){ ctx.moveTo(prevX, prevY); penDown = true; }
+          ctx.lineTo(px, py);
+        } else if(inView && !prevIn){
+          // Entering viewport from left — start from left edge intersection
+          if(prevX < xLeft){
+            const iy = interpX(prevX, prevY, px, py, xLeft);
+            ctx.moveTo(xLeft, iy); penDown = true;
+            ctx.lineTo(px, py);
+          } else {
+            // Entering from right (panning) — just moveTo current
+            ctx.moveTo(px, py); penDown = true;
+          }
+        } else if(!inView && prevIn){
+          if(px > xRight){
+            // Exiting right — draw to right edge intersection and stop
+            const iy = interpX(prevX, prevY, px, py, xRight);
+            if(!penDown){ ctx.moveTo(prevX, prevY); penDown = true; }
+            ctx.lineTo(xRight, iy);
+            penDown = false;
+          } else {
+            // Exiting left
+            if(!penDown){ ctx.moveTo(prevX, prevY); penDown = true; }
+            ctx.lineTo(px, py);
+          }
+        }
+        // Both off-screen: skip
+      }
       ctx.stroke();
     }
 
-    // Dots
+    // Dots — only for on-screen points
     ctx.fillStyle = col; ctx.globalAlpha = 1;
     pts.forEach(p=>{
+      if(p.x < xLeft || p.x > xRight) return; // skip off-screen dots
       ctx.beginPath();
       ctx.arc(p.x, kpiY(p.v), 2.5, 0, Math.PI*2);
       ctx.fill();
