@@ -2174,25 +2174,48 @@ function drawCandlestick(s){
   // Use FULL candle history for price lookups — not just visible slice
   // (allCandles, visFirst, visRange, allFirst, allRange already defined above)
 
-  // Compute the earliest KPI date across all active KPIs so xForDate can
-  // extend the time axis left of the oldest price candle (e.g. AFCONS IPO stocks
-  // have price history only from late 2024 but annual KPI data from 2020+).
-  const _kpiDates = quarterly ? quarterly.map(q => new Date(q.d).getTime()).filter(Boolean) : [];
-  const kpiEarliest = _kpiDates.length ? Math.min(..._kpiDates) : visFirst;
-  // The x-axis anchor is the LAST visible candle at the right edge.
-  // Everything is placed relative to that fixed right anchor using wall-clock time.
-  const xAnchorT  = visLast;                          // timestamp at right edge
-  const xAnchorPx = PAD.l + cW;                       // pixel at right edge
-  // Time range covers from earliest KPI date to last visible candle
-  const extFirst   = Math.min(kpiEarliest, visFirst);
-  const extRange   = (xAnchorT - extFirst) || 1;
+  // xForDate: map a KPI date string to a canvas x pixel using the same
+  // index-based axis as barX() so KPI overlays track pan and zoom correctly.
+  //
+  // Strategy: find the KPI date's fractional position in allCandles[], then
+  // express that as an offset from candles[0] (the first visible bar, index 0).
+  // barX(i) handles the rest. For KPI dates older than allCandles[0] we
+  // extrapolate leftward using the average candle time-spacing, so annual
+  // financials older than the stock's price history (e.g. pre-IPO data) still
+  // appear at a sensible position to the left of the visible price bars.
+  const _avgCandleMs = allCandles.length > 1
+    ? (allCandles[allCandles.length-1]._t - allCandles[0]._t) / (allCandles.length - 1)
+    : 30 * 24 * 3600 * 1000; // fallback: ~1 month
+
+  // candles[0] sits at allCandles[allOffset]
+  // getSlicedCandles: end = allCandles.length - panIdx; slice = [end-vis .. end)
+  // so candles[0] = allCandles[allCandles.length - panIdx - candles.length]
+  const _kpiAllOffset = allCandles.length - Math.floor(S.panOffset) - candles.length;
 
   function xForDate(dateStr){
-    // Parse date string YYYY-MM-DD to timestamp without new Date() overhead
     const p = dateStr.split('-');
     const t = Date.UTC(+p[0], +p[1]-1, +p[2]);
-    // Map t proportionally: visLast → right edge (PAD.l + cW), extFirst → left of canvas
-    return PAD.l + ((t - extFirst) / extRange) * cW;
+
+    // Find fractional index in allCandles[] via binary search
+    let lo = 0, hi = allCandles.length - 1, fracIdx;
+    if(t <= allCandles[0]._t){
+      // Extrapolate left of oldest candle
+      fracIdx = (t - allCandles[0]._t) / _avgCandleMs;
+    } else if(t >= allCandles[hi]._t){
+      // Extrapolate right of newest candle
+      fracIdx = hi + (t - allCandles[hi]._t) / _avgCandleMs;
+    } else {
+      // Binary search for bracketing candles
+      while(lo < hi - 1){
+        const mid = (lo + hi) >> 1;
+        if(allCandles[mid]._t <= t) lo = mid; else hi = mid;
+      }
+      const span = allCandles[hi]._t - allCandles[lo]._t || 1;
+      fracIdx = lo + (t - allCandles[lo]._t) / span;
+    }
+
+    // Convert allCandles index to candles[] (visible slice) index, then to pixels
+    return barX(fracIdx - _kpiAllOffset);
   }
 
   // Search FULL history for price on/before a date
