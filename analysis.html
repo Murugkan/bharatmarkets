@@ -2299,13 +2299,24 @@ function drawCandlestick(s){
     if(visPts.length >= 1){
       scaleSource = visPts;
     } else {
-      // No points on screen — find nearest off-left and off-right
       const offLeft  = pts.filter(p => p.x < PAD.l).sort((a,b) => b.x - a.x)[0];
       const offRight = pts.filter(p => p.x > PAD.l + cW).sort((a,b) => a.x - b.x)[0];
       scaleSource = [offLeft, offRight].filter(Boolean);
       if(!scaleSource.length) scaleSource = pts;
     }
-    const vals = scaleSource.map(p=>p.v);
+    // Outlier rejection: exclude values beyond 3× IQR from median to prevent
+    // a single extreme value (e.g. CCR=-286) from collapsing the y-scale.
+    let vals = scaleSource.map(p=>p.v).sort((a,b)=>a-b);
+    if(vals.length >= 4){
+      const q1 = vals[Math.floor(vals.length*0.25)];
+      const q3 = vals[Math.floor(vals.length*0.75)];
+      const iqr = q3 - q1;
+      if(iqr > 0){
+        const lo = q1 - 3*iqr, hi = q3 + 3*iqr;
+        const filtered = vals.filter(v => v >= lo && v <= hi);
+        if(filtered.length >= 1) vals = filtered;
+      }
+    }
     const rawMin = Math.min(...vals), rawMax = Math.max(...vals);
     const rawSpan = (rawMax - rawMin) || Math.abs(rawMin) || 1;
     const pad = rawSpan * 0.08;
