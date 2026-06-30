@@ -3679,6 +3679,10 @@ function sigBoot() {
     buildSigMedians(MASTER);
     SIG_ALL = MASTER
         .filter(st => st.ticker && !st.ticker.startsWith('_'))
+        .filter(st => {
+            const isin = (st.company_details?.isin || st.isin || '').toUpperCase();
+            return isin.startsWith('INE');
+        })
         .map(st => {
             try {
                 return sigComposite(st.ticker, st);
