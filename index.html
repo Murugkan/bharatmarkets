@@ -1559,6 +1559,7 @@ let SIG_ALL = [];           // computed signals for all tickers
 let SIG_MEDIANS = {};       // sector PE medians
 let SIG_SELECTED = null;    // selected ticker
 let SIG_SORT = 'score';     // 'score'|'name'|'sector'
+let SIG_SORT_DIR = 'desc';  // 'asc'|'desc' (score only)
 let SIG_SECTOR_F = '';      // sector filter
 let SIG_SEARCH_F = '';      // search filter
 let SIG_OPEN_PILLARS = {};  // which pillar cards are expanded
@@ -1942,7 +1943,7 @@ function sigRenderList() {
     if(SIG_SEARCH_F) items=items.filter(x=>x.ticker.includes(SIG_SEARCH_F)||x.name.toUpperCase().includes(SIG_SEARCH_F));
     if(SIG_SORT==='name') items.sort((a,b)=>a.ticker.localeCompare(b.ticker));
     else if(SIG_SORT==='sector') items.sort((a,b)=>a.sector.localeCompare(b.sector));
-    else items.sort((a,b)=>(b.comp??-1)-(a.comp??-1));
+    else items.sort((a,b)=>SIG_SORT_DIR==='asc'?(a.comp??-1)-(b.comp??-1):(b.comp??-1)-(a.comp??-1));
 
     const listEl=document.getElementById('sig-list');
     listEl.innerHTML=items.map(sig=>{
@@ -2191,11 +2192,18 @@ function sigFilter() {
     if(window._sigListResetScroll) window._sigListResetScroll();
 }
 function sigSort(by) {
+    if(by==='score' && SIG_SORT==='score') {
+        SIG_SORT_DIR = SIG_SORT_DIR==='desc' ? 'asc' : 'desc';
+    } else if(by==='score') {
+        SIG_SORT_DIR = 'desc';
+    }
     SIG_SORT=by;
     ['score','name','sector'].forEach(s=>{
         const el=document.getElementById('sig-sort-'+s);
         if(el){ el.classList.toggle('active',s===by); }
     });
+    const scoreBtn=document.getElementById('sig-sort-score');
+    if(scoreBtn) scoreBtn.innerHTML='SCORE'+(SIG_SORT_DIR==='asc'?'&#8593;':'&#8595;');
     sigRenderList();
     if(window._sigListResetScroll) window._sigListResetScroll();
 }
