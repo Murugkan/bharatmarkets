@@ -223,7 +223,7 @@
         <div style="padding:10px 12px; border-bottom:1px solid #1a1a1a; background:#000; flex-shrink:0; display:flex; align-items:center; justify-content:space-between;">
             <span style="font-size:9px; color:#bbb; letter-spacing:0.1em">SECTOR SIGNAL AVERAGES</span>
             <div style="display:flex; gap:6px;">
-                <button class="sig-sort-btn active" id="ss-sort-score" onclick="secSort('score')">SCORE</button>
+                <button class="sig-sort-btn active" id="ss-sort-score" onclick="secSort('score')">SCORE&#8595;</button>
                 <button class="sig-sort-btn" id="ss-sort-name" onclick="secSort('name')">A–Z</button>
                 <button class="sig-sort-btn" id="ss-sort-count" onclick="secSort('count')">#</button>
             </div>
@@ -2499,6 +2499,7 @@ function clearQuery() {
 // ============================================================
 
 let SEC_SORT = 'score';  // 'score'|'name'|'count'
+let SEC_SORT_DIR = 'desc'; // 'asc'|'desc'
 let SIG_SUBTAB = 'signals';  // current sub-tab
 
 // ---------- SUB-TAB SWITCHER ----------
@@ -2558,9 +2559,9 @@ function buildSectorStats() {
 function renderSectorTab() {
     if(!SIG_ALL.length) return;
     let stats = buildSectorStats();
-    if(SEC_SORT==='score') stats.sort((a,b)=>(b.score??-1)-(a.score??-1));
-    else if(SEC_SORT==='name') stats.sort((a,b)=>a.name.localeCompare(b.name));
-    else stats.sort((a,b)=>b.count-a.count);
+    if(SEC_SORT==='score') stats.sort((a,b)=>SEC_SORT_DIR==='asc'?(a.score??-1)-(b.score??-1):(b.score??-1)-(a.score??-1));
+    else if(SEC_SORT==='name') stats.sort((a,b)=>SEC_SORT_DIR==='asc'?a.name.localeCompare(b.name):b.name.localeCompare(a.name));
+    else stats.sort((a,b)=>SEC_SORT_DIR==='asc'?a.count-b.count:b.count-a.count);
 
     // ---- SUMMARY STRIP ----
     const universe = SIG_ALL.length;
@@ -2701,10 +2702,19 @@ function sigFilter_sector(name) {
 }
 
 function secSort(by) {
+    if(by===SEC_SORT) {
+        SEC_SORT_DIR = SEC_SORT_DIR==='desc' ? 'asc' : 'desc';
+    } else {
+        SEC_SORT_DIR = 'desc';
+    }
     SEC_SORT = by;
+    const labels={score:'SCORE',name:'A&#8211;Z',count:'#'};
     ['score','name','count'].forEach(k => {
         const el=document.getElementById('ss-sort-'+k);
-        if(el) el.classList.toggle('active', k===by);
+        if(el){
+            el.classList.toggle('active', k===by);
+            el.innerHTML = labels[k] + (k===by ? (SEC_SORT_DIR==='asc'?'&#8593;':'&#8595;') : '');
+        }
     });
     renderSectorTab();
 }
