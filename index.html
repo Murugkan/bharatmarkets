@@ -389,7 +389,7 @@ const PALETTE = [
 
 const UI_FIELDS = [
     '#', 'SECTOR', 'SIGNAL', 'DEMAT', 'QTY', 'AVG', 'INVESTED', 'PNL', 'PNL%',
-    'TICKER', '1D%', '1DCH', '1D_GAIN', 'LTP', 'ROE%', 'ROCE%', 'OPM%', 'NPM%', 'PE', 'PB', 'BV',
+    '1D_GAIN', 'TICKER', 'LTP', '1D%', '1DCH', 'ROE%', 'ROCE%', 'OPM%', 'NPM%', 'PE', 'PB', 'BV',
     'EPS', 'FV', 'PROM%', 'FII%', 'DII%', 'ATH%', '52W%', 'MCAP', 'SALES', 'EBITDA', 'CFO', 'NETCF',
     'CAPEX', 'FCF', 'DEBT_EQ', 'INT_COV', 'P/S', 'EV/EBITDA', 'TAX_RATE'
 ];
@@ -469,7 +469,13 @@ const fmt = (val, field) => {
         if (abs >= 1000) return sign + (abs / 1000).toFixed(1) + 'k Cr';
         return sign + Math.round(abs) + ' Cr';
     }
-    if (['INVESTED', '1D_GAIN', '1DCH', 'PNL'].includes(field)) return formatLargeNum(n);
+    if (field === '1DCH') {
+        const abs = Math.abs(n), sign = n < 0 ? '-' : '';
+        if (abs >= 100000) return sign + (abs / 100000).toFixed(1) + 'L';
+        if (abs >= 1000) return sign + (abs / 1000).toFixed(1) + 'k';
+        return sign + abs.toFixed(1);
+    }
+    if (['INVESTED', '1D_GAIN', 'PNL'].includes(field)) return formatLargeNum(n);
     if (['AVG'].includes(field)) return Math.round(n).toString(); // Remove decimals
     if (['FV'].includes(field)) return Math.round(n).toString();
     if (['PE', 'PB', 'EPS'].includes(field)) return n.toFixed(1); // 1 decimal for EPS
