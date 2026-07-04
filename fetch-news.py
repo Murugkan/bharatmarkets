@@ -5,7 +5,7 @@ Generates a pre-market brief from actual fetched headlines.
 Writes data/news.json.
 Run by GitHub Actions every 6 hours.
 """
-import json, os, re, urllib.request, urllib.parse, xml.etree.ElementTree as ET
+import json, os, random, re, subprocess, time, urllib.request, urllib.parse, xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 
