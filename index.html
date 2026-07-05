@@ -2952,7 +2952,12 @@ function renderSectorPanel(sectorName, stats) {
 
 function renderSpreadTab() {
     if(!SIG_ALL.length) return;
-    const scores = SIG_ALL.map(s=>s.comp);
+    // Exclude NO-DATA stocks (comp=null, e.g. mutual funds/SGB) — without
+    // this, null coerces to 0 in the arithmetic below, silently dragging
+    // down every mean/median/std-dev and inflating the "tickers scored"
+    // count with tickers that were never actually scored.
+    const scored = SIG_ALL.filter(s => s.comp !== null && s.comp !== undefined);
+    const scores = scored.map(s=>s.comp);
     const n = scores.length;
     const sorted = [...scores].sort((a,b)=>a-b);
     const mean = Math.round(scores.reduce((a,b)=>a+b,0)/n);
@@ -2961,13 +2966,20 @@ function renderSpreadTab() {
     const q1 = sorted[Math.floor(n*0.25)];
     const q3 = sorted[Math.floor(n*0.75)];
 
-    const ratingCounts = {'STRONG BUY':0,'BUY':0,'NEUTRAL':0,'REDUCE':0,'SELL':0};
-    SIG_ALL.forEach(s=>{ if(ratingCounts[s.rating]!==undefined) ratingCounts[s.rating]++; });
+    // Real rating labels (was checking for 'NEUTRAL'/'REDUCE', which never
+    // match anything — leftover from before ratings were unified to the
+    // pipeline's own scheme. That silently dropped every HOLD (the majority
+    // of the portfolio) and STRONG SELL from this whole tab.
+    const ratingCounts = {'STRONG BUY':0,'BUY':0,'HOLD':0,'SELL':0,'STRONG SELL':0};
+    scored.forEach(s=>{ if(ratingCounts[s.rating]!==undefined) ratingCounts[s.rating]++; });
 
     const pillars = ['F','T','V','S'];
     const pillarNames = {F:'Fundamental',T:'Technical',V:'Valuation',S:'Sentiment'};
     const pillarAvg = {};
-    pillars.forEach(p => { pillarAvg[p] = Math.round(SIG_ALL.reduce((a,s)=>a+s[p].score,0)/n); });
+    pillars.forEach(p => {
+        const vals = scored.map(s=>s[p].score).filter(v=>v!==null&&v!==undefined);
+        pillarAvg[p] = vals.length ? Math.round(vals.reduce((a,b)=>a+b,0)/vals.length) : null;
+    });
 
     // Histogram data (bins of 5)
     const bins = Array.from({length:20},(_,i)=>({lo:i*5, hi:(i+1)*5, count:0}));
@@ -2989,13 +3001,13 @@ function renderSpreadTab() {
         <div style="display:flex; height:28px; border-radius:4px; overflow:hidden; gap:1px">
             ${Object.entries(ratingCounts).map(([r,cnt])=>{
                 const pct=(cnt/n*100).toFixed(1);
-                const col={'STRONG BUY':'#00ff88','BUY':'#69f0ae','NEUTRAL':'#ffea00','REDUCE':'#ff9100','SELL':'#ff4d6d'}[r];
+                const col=sigPipeColor(r);
                 return cnt>0?`<div style="flex:${cnt};background:${col};display:flex;align-items:center;justify-content:center;font-size:7px;font-weight:800;color:#000;min-width:1px" title="${r}: ${cnt}">${pct}%</div>`:'';
             }).join('')}
         </div>
         <div style="display:flex; gap:8px; margin-top:6px; flex-wrap:wrap">
             ${Object.entries(ratingCounts).map(([r,cnt])=>{
-                const col={'STRONG BUY':'#00ff88','BUY':'#69f0ae','NEUTRAL':'#ffea00','REDUCE':'#ff9100','SELL':'#ff4d6d'}[r];
+                const col=sigPipeColor(r);
                 return `<span style="font-size:8px;color:${col}">${r.replace('STRONG ','STR ')}: <strong>${cnt}</strong></span>`;
             }).join('')}
         </div>
@@ -3036,7 +3048,7 @@ function renderSpreadTab() {
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:0 10px 10px">
         <div style="background:#060f06;border:1px solid #1a3a1a;border-radius:8px;padding:10px">
             <div style="font-size:8px;color:#00ff88;font-weight:800;margin-bottom:8px;letter-spacing:0.08em">TOP 5 SIGNALS</div>
-            ${[...SIG_ALL].sort((a,b)=>b.comp-a.comp).slice(0,5).map((s,i)=>`
+            ${[...scored].sort((a,b)=>b.comp-a.comp).slice(0,5).map((s,i)=>`
             <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid #0a1a0a;cursor:pointer" onclick="sigSubTab('signals');sigSelect('${s.ticker}')">
                 <span style="font-size:8px;color:#ccc;width:12px">${i+1}</span>
                 <span style="font-size:10px;font-weight:800;color:#e2e8f0;flex:1">${s.ticker}</span>
@@ -3045,7 +3057,7 @@ function renderSpreadTab() {
         </div>
         <div style="background:#0f0606;border:1px solid #3a1a1a;border-radius:8px;padding:10px">
             <div style="font-size:8px;color:#ff4d6d;font-weight:800;margin-bottom:8px;letter-spacing:0.08em">BOTTOM 5 SIGNALS</div>
-            ${[...SIG_ALL].sort((a,b)=>a.comp-b.comp).slice(0,5).map((s,i)=>`
+            ${[...scored].sort((a,b)=>a.comp-b.comp).slice(0,5).map((s,i)=>`
             <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid #1a0a0a;cursor:pointer" onclick="sigSubTab('signals');sigSelect('${s.ticker}')">
                 <span style="font-size:8px;color:#ccc;width:12px">${i+1}</span>
                 <span style="font-size:10px;font-weight:800;color:#e2e8f0;flex:1">${s.ticker}</span>
@@ -3058,8 +3070,8 @@ function renderSpreadTab() {
     <div style="padding:10px 12px; margin:0 10px 10px; background:#0a0a0a; border:1px solid #222; border-radius:8px;">
         <div class="spread-label" style="margin-bottom:8px">PORTFOLIO vs WATCHLIST</div>
         ${(()=>{
-            const portfolio = SIG_ALL.filter(s=>{ const st=MASTER.find(m=>m.ticker===s.ticker); return (st?.company_details?.qty||0)>0; });
-            const watchlist = SIG_ALL.filter(s=>{ const st=MASTER.find(m=>m.ticker===s.ticker); return (st?.company_details?.qty||0)===0; });
+            const portfolio = scored.filter(s=>{ const st=MASTER.find(m=>m.ticker===s.ticker); return (st?.company_details?.qty||0)>0; });
+            const watchlist = scored.filter(s=>{ const st=MASTER.find(m=>m.ticker===s.ticker); return (st?.company_details?.qty||0)===0; });
             const pavg = portfolio.length ? Math.round(portfolio.reduce((a,s)=>a+s.comp,0)/portfolio.length) : 0;
             const wavg = watchlist.length ? Math.round(watchlist.reduce((a,s)=>a+s.comp,0)/watchlist.length) : 0;
             return `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
@@ -3138,7 +3150,7 @@ function renderRankTab() {
     // Use sort state from header clicks; pillar dropdown still sets initial column
     const sortCol = RANK_SORT_COL;
     const sortDir = RANK_SORT_DIR;
-    const RATING_ORDER = {'STRONG BUY':5,'BUY':4,'NEUTRAL':3,'REDUCE':2,'SELL':1};
+    const RATING_ORDER = {'STRONG BUY':6,'BUY':5,'HOLD':4,'SELL':2,'STRONG SELL':1,'NO DATA':0};
     items.sort((a,b)=>{
         let av, bv;
         if(sortCol==='ticker') { av=a.ticker; bv=b.ticker; return sortDir==='asc'?av.localeCompare(bv):bv.localeCompare(av); }
@@ -3152,7 +3164,7 @@ function renderRankTab() {
     document.getElementById('rank-tbody').innerHTML = items.map((sig,i)=>{
         const sc = getScore(sig);
         const col = sigScoreColor(sc);
-        const rCol = {'STRONG BUY':'#00ff88','BUY':'#69f0ae','NEUTRAL':'#ffea00','REDUCE':'#ff9100','SELL':'#ff4d6d'}[sig.rating]||'#aaa';
+        const rCol = sigPipeColor(sig.rating);
         return `<tr style="cursor:pointer" onclick="sigSubTab('signals');sigSelect('${sig.ticker}')">
             <td style="color:#bbb;font-size:8px">${i+1}</td>
             <td style="font-weight:800;color:#e2e8f0;font-size:8px;padding:7px 4px;max-width:50px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${sig.ticker}</td>
