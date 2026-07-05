@@ -1690,22 +1690,14 @@ function drawNavLine(s){
 
     // Tap/click tooltip — same wiring as drawCandlestick so taps work on the
     // NAV chart too (previously only drawCandlestick attached these).
-    // cv._skipClick guards against the synthetic "click" iOS Safari fires
-    // right after touchend — without it, that ghost click re-hits the same
-    // dot and the toggle-off branch below removes the tooltip we just showed.
-    cv.onclick = (e) => {
-      if(cv._skipClick){ cv._skipClick = false; return; }
-      handleChartClick(e, cv, cv._W2||W2, cv._H2||H2);
-    };
+    cv.onclick = (e) => handleChartClick(e, cv, cv._W2||W2, cv._H2||H2);
     cv._W2 = W2; cv._H2 = H2;
     if(!cv._tb){
       cv._tb = true;
       cv.addEventListener('touchend', (e) => {
         if(e.touches.length===0 && !chartInteraction.isPanning){
           const touch = e.changedTouches[0];
-          cv._skipClick = true;
           handleChartClick(new MouseEvent('click',{clientX:touch.clientX,clientY:touch.clientY}), cv, cv._W2||320, cv._H2||200);
-          setTimeout(()=>{ cv._skipClick = false; }, 400); // fallback in case no ghost click follows
         }
       }, {passive:true});
     }
@@ -2732,12 +2724,10 @@ function handleChartClick(e, canvas, W2, H2) {
     bar = candlestickBars.find(b => mx>=b.x && mx<=b.x+b.w && my>=b.y && my<=b.y+b.h);
   }
   let tip = document.getElementById('chart-tooltip');
-  if(!bar || window.candleTooltipBar===bar.date) {
+  if(!bar) {
     if(tip) tip.remove();
-    window.candleTooltipBar = null;
     return;
   }
-  window.candleTooltipBar = bar.date;
   if(bar.isNav){
     showTip('chart-tooltip','#00d4ff',
       `<div style="color:#00d4ff;font-weight:bold;margin-bottom:6px">${bar.date}</div>
