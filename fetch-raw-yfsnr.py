@@ -83,12 +83,13 @@ def verify_paths():
 HEADERS = {"User-Agent": "Mozilla/5.0"}
 
 # Interval-to-period mapping: defines what period to use for each interval.
-# Daily uses a short 6mo window (not the full history_period) since it's
-# only needed for short-term momentum scoring, not long-run history — a
-# 10y daily pull would be ~2500 rows/symbol for no benefit here. Weekly
+# Daily uses a short 3mo window (not the full history_period) since it's
+# only needed for short-term momentum scoring (looks back ~63 trading days),
+# not long-run history — 3mo reliably clears that plus the downstream
+# 50-bar data-quality floor, with less payload than a 6mo pull. Weekly
 # (1wk) OHLCV history is still NOT fetched.
 INTERVAL_PERIOD_MAP = {
-    "1d":  "6mo",
+    "1d":  "3mo",
     "1mo": None,   # Use configured history_period
 }
 
@@ -338,7 +339,7 @@ def fetch_yahoo_payload(ticker, symbol_overrides, history_period="10y", history_
     """
     Fetch Yahoo Finance info, LTP, 1-day change, and OHLCV history.
 
-    Daily (1d, 6mo window) and monthly (1mo) OHLCV history are fetched.
+    Daily (1d, 3mo window) and monthly (1mo) OHLCV history are fetched.
     Weekly (1wk) history fetch remains removed. LTP, 1-day change, and
     1-day change % are extracted as explicit top-level fields.
 
