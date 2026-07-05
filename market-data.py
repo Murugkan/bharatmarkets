@@ -576,10 +576,10 @@ FIELD_MAP = {
     # ── yahoofin_raw:history_*  (OHLCV) ──────────────────────────────────────
     # Canonical keys — market_data_flatten.py normalises 5yr and 10yr source
     # variants to these same names, so output structure is always identical.
-    # history_6mo_1d  — daily,   always present
+    # history_3mo_1d  — daily,   always present
     # history_1wk     — weekly,  from history_5y_1wk OR history_10y_1wk
     # history_1mo     — monthly, from history_5y_1mo OR history_10y_1mo
-    "yahoofin_raw:history_6mo_1d": "__history__",
+    "yahoofin_raw:history_3mo_1d": "__history__",
     "yahoofin_raw:history_1wk":    "__history__",
     "yahoofin_raw:history_1mo":    "__history__",
 
@@ -784,7 +784,7 @@ def bucket_symbol(symbol: str, sections: dict) -> dict:
 
         # ── OHLCV history sections ─────────────────────────────────────────
         if sec_map == "__history__":
-            hist_key = sec_key.split(":")[-1]   # e.g. history_6mo_1d
+            hist_key = sec_key.split(":")[-1]   # e.g. history_3mo_1d
 
             # New format: one metric per OHLCV column, each with periods={date: value}
             # Reconstruct the OHLCV bar list: [{Date, Open, High, Low, Close, Volume}]
@@ -2899,7 +2899,7 @@ def standardize_field_names(bucketed: dict) -> dict:
             'fifty_two_week_high_change_pct':'week52_high_diff_pct',
             'fifty_two_week_low_change':    'week52_low_diff',
             'fifty_two_week_low_change_pct':'week52_low_diff_pct',
-            'history_6mo_1d':               'ohlcv_daily',
+            'history_3mo_1d':               'ohlcv_daily',
             'history_1wk':                  'ohlcv_weekly',
             'history_1mo':                  'ohlcv_monthly',
         })
