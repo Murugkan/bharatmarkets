@@ -2053,6 +2053,19 @@ def compute_derived_metrics(bucketed: dict, sector: str = None) -> dict:
                                                                  (20, 65), (50, 80), (80, 95)])
             metrics['pe_compression_score'] = compression_score
             valuation_components.append(compression_score)
+
+            # Forward PE itself, scored against the same sector fair-value
+            # benchmark as trailing PE. Compression only shows the direction
+            # of change — a stock can compress hard (scores well above) while
+            # its forward PE is still objectively expensive, or compress
+            # unfavorably while its forward PE remains genuinely cheap. This
+            # is the missing "is it actually cheap going forward" read.
+            fwd_score = interp_score(pe_forward, [(pe_fair * 0.4, 100), (pe_fair * 0.8, 80),
+                                                    (pe_fair, 65), (pe_fair * 1.5, 45),
+                                                    (pe_fair * 2.5, 25), (pe_fair * 4, 10)])
+            metrics['pe_forward_ratio'] = round(pe_forward, 2)
+            metrics['pe_forward_score'] = fwd_score
+            valuation_components.append(fwd_score)
     else:
         # Loss-maker: PE undefined because earnings are negative → penalise,
         # don't silently skip. Only when we can confirm losses from margin.
@@ -2417,6 +2430,31 @@ def compute_derived_metrics(bucketed: dict, sector: str = None) -> dict:
         if conf_score is not None:
             metrics['management_confidence_score'] = conf_score
             sentiment_components.append(conf_score)
+
+    # Management tone (guidance.json) — distinct from confidence above.
+    # Confidence is about credibility/track record; tone is specifically
+    # how management framed forward guidance in the most recent commentary
+    # (upbeat vs hedged vs defensive), a more immediate read.
+    mgmt_tone = ai_guidance.get('guidance', {}).get('management', {}).get('tone')
+    if isinstance(mgmt_tone, str):
+        tone_map = {'positive': 75, 'cautious': 40, 'defensive': 30, 'negative': 20}
+        tone_score = tone_map.get(mgmt_tone.strip().lower())
+        if tone_score is not None:
+            metrics['management_tone_score'] = tone_score
+            sentiment_components.append(tone_score)
+
+    # AI's own standalone recommendation — an independent cross-check
+    # rating from a separate research process, not derived from our own
+    # composite score. Distinct from the 6-dimension qualitative average
+    # above (that's a business-quality read; this is a bottom-line call).
+    ai_recommendation = ai_guidance.get('insights', {}).get('recommendation')
+    if isinstance(ai_recommendation, str):
+        rec_map = {'buy': 80, 'hold': 50, 'reduce': 25, 'sell': 20, 'exit': 10}
+        rec_score = rec_map.get(ai_recommendation.strip().lower())
+        if rec_score is not None:
+            metrics['ai_recommendation'] = ai_recommendation.strip().upper()
+            metrics['ai_recommendation_score'] = rec_score
+            sentiment_components.append(rec_score)
 
     sentiment_score = round(sum(sentiment_components) / len(sentiment_components)) \
                       if sentiment_components else None
