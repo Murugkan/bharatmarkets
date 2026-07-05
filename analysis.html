@@ -1803,7 +1803,7 @@ function drawNavLine(s){
     ctx.beginPath();
     pts.forEach((p,i) => {
       const x = toX(p._t), y = toY(p.v);
-      candlestickBars.push({ date:p.d, close:p.v, x:x-4, y:y-8, w:8, h:16, isNav:true });
+      candlestickBars.push({ date:p.d, close:p.v, x, y, isNav:true });
       i===0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
     });
     ctx.stroke();
@@ -2714,9 +2714,23 @@ function handleChartClick(e, canvas, W2, H2) {
     }
   }
 
-  // 3. Candlestick bars
+  // 3. Candlestick bars / NAV points
   if(!candlestickBars.length) return;
-  const bar = candlestickBars.find(b => mx>=b.x && mx<=b.x+b.w && my>=b.y && my<=b.y+b.h);
+  let bar;
+  if(candlestickBars[0].isNav){
+    // Dots are small targets — a fingertip rarely lands within a few px,
+    // so use a generous radius and pick the nearest point, rather than
+    // requiring the tap to fall inside an exact tiny rectangle.
+    let bestDist = 22;
+    for(let i=0;i<candlestickBars.length;i++){
+      const b = candlestickBars[i];
+      const dx = mx-b.x, dy = my-b.y;
+      const dist = Math.sqrt(dx*dx+dy*dy);
+      if(dist < bestDist){ bestDist = dist; bar = b; }
+    }
+  } else {
+    bar = candlestickBars.find(b => mx>=b.x && mx<=b.x+b.w && my>=b.y && my<=b.y+b.h);
+  }
   let tip = document.getElementById('chart-tooltip');
   if(!bar || window.candleTooltipBar===bar.date) {
     if(tip) tip.remove();
