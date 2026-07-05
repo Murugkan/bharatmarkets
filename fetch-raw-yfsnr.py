@@ -82,10 +82,13 @@ def verify_paths():
 
 HEADERS = {"User-Agent": "Mozilla/5.0"}
 
-# Interval-to-period mapping: defines what period to use for each interval
-# Daily (1d) and weekly (1wk) OHLCV history are NOT fetched here.
-# Only monthly (1mo) history is retained.
+# Interval-to-period mapping: defines what period to use for each interval.
+# Daily uses a short 6mo window (not the full history_period) since it's
+# only needed for short-term momentum scoring, not long-run history — a
+# 10y daily pull would be ~2500 rows/symbol for no benefit here. Weekly
+# (1wk) OHLCV history is still NOT fetched.
 INTERVAL_PERIOD_MAP = {
+    "1d":  "6mo",
     "1mo": None,   # Use configured history_period
 }
 
@@ -333,21 +336,23 @@ class Step1Tester:
 
 def fetch_yahoo_payload(ticker, symbol_overrides, history_period="10y", history_intervals=None):
     """
-    Fetch Yahoo Finance info, LTP, 1-day change, and monthly OHLCV history.
+    Fetch Yahoo Finance info, LTP, 1-day change, and OHLCV history.
 
-    Only monthly (1mo) OHLCV history is fetched. Daily (1d) and weekly
-    (1wk) history fetches have been removed. LTP, 1-day change, and
+    Daily (1d, 6mo window) and monthly (1mo) OHLCV history are fetched.
+    Weekly (1wk) history fetch remains removed. LTP, 1-day change, and
     1-day change % are extracted as explicit top-level fields.
 
     Args:
         ticker: Stock ticker
         symbol_overrides: Symbol mapping dict
-        history_period: Main history period (2y, 5y, 10y, etc.)
-        history_intervals: List of intervals to fetch (default: ["1mo"])
+        history_period: Main history period (2y, 5y, 10y, etc.) — used for
+            monthly; daily always uses its own short period from
+            INTERVAL_PERIOD_MAP regardless of this value.
+        history_intervals: List of intervals to fetch (default: ["1mo", "1d"])
     """
     
     if history_intervals is None:
-        history_intervals = ["1mo"]
+        history_intervals = ["1mo", "1d"]
     
     payload = {}
     yahoo_symbol = resolve_symbol(ticker, symbol_overrides)
@@ -610,9 +615,12 @@ def main():
     FETCH_YAHOO = fetch_config.get('yahoo', True)
     FETCH_SCREENER = fetch_config.get('screener', True)
     HISTORY_PERIOD = fetch_config.get('history_period', '10y')
-    HISTORY_INTERVALS = fetch_config.get('history_intervals', ['1mo'])
-    # Daily/weekly OHLCV history fetch removed — filter out even if present in config
-    HISTORY_INTERVALS = [i for i in HISTORY_INTERVALS if i not in ('1d', '1wk')]
+    HISTORY_INTERVALS = fetch_config.get('history_intervals', ['1mo', '1d'])
+    # Weekly OHLCV history fetch remains removed — filter out even if present
+    # in config. Daily (1d) was restored 2026-07 to feed momentum scoring in
+    # market_data.py's compute_derived_metrics(), which was silently dead
+    # without it.
+    HISTORY_INTERVALS = [i for i in HISTORY_INTERVALS if i != '1wk']
     SCREENER_TIMEOUT = fetch_config.get('screener_timeout', 30)
     SCREENER_RETRIES = fetch_config.get('screener_retries', 2)
     SCREENER_DELAY = fetch_config.get('screener_delay', 1.0)

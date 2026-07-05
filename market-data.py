@@ -722,6 +722,34 @@ def resolve_sector(sector: str) -> str:
             return alias
     return "Other"
 
+# Industry-level overrides for sub-industries whose fair-value multiples are
+# structurally different from their sector's default — e.g. "Financials"
+# covers both lenders (banks/NBFCs/HFCs, pe_fair=15/pb_fair=2.5 fits fine)
+# and fee-based/asset-light businesses like depositories and insurers, which
+# normally trade at much richer multiples. Without this, those names get
+# valuation-floored purely from a sector-vs-lender mismatch (confirmed for
+# CDSL and HDFCLIFE in the 2026-07 audit — both landed STRONG SELL almost
+# entirely on a mis-benchmarked valuation pillar). Only overrides the keys
+# given; everything else falls through to the sector profile.
+# Starter values — revisit once more names exist in each industry.
+INDUSTRY_OVERRIDES = {
+    "capital markets":  {"pe_fair": 40, "pb_fair": 9.0},   # depositories/exchanges
+    "life insurance":   {"pe_fair": 55, "pb_fair": 6.0},   # embedded-value businesses
+}
+
+def apply_industry_override(sector_profile: dict, industry: str) -> dict:
+    """Layer an industry-level override on top of the sector profile, if one
+    exists for this industry (case-insensitive). Returns a new dict — never
+    mutates the shared SECTOR_PROFILES entry."""
+    if not industry:
+        return sector_profile
+    override = INDUSTRY_OVERRIDES.get(industry.strip().lower())
+    if not override:
+        return sector_profile
+    merged = dict(sector_profile)
+    merged.update(override)
+    return merged
+
 ALL_BUCKETS = [
     "company_details",
     "financials",
@@ -1548,9 +1576,10 @@ def compute_derived_metrics(bucketed: dict, sector: str = None) -> dict:
     if not sector:
         sector = bucketed.get("company_details", {}).get("sector", "Other")
     sector = resolve_sector(sector)
-    sector_profile = SECTOR_PROFILES[sector]
+    industry = bucketed.get("company_details", {}).get("industry")
+    sector_profile = apply_industry_override(SECTOR_PROFILES[sector], industry)
 
-    metrics = {"sector": sector}
+    metrics = {"sector": sector, "industry": industry}
 
     # ── Helpers ───────────────────────────────────────────────────────────────
     def latest_annual(field):
