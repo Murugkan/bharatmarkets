@@ -1600,11 +1600,17 @@ function buildSigMedians(stocks) {
 // expandable sub-row detail underneath it.
 function sigFundamentalSub(cm) {
     return {
-        prof:  {s:cm.profitability_theme??0,     hasData:cm.profitability_theme!=null,     label:'Profitability',      val:''},
-        growt: {s:cm.growth_theme??0,             hasData:cm.growth_theme!=null,             label:'Growth',             val:''},
-        capst: {s:cm.capital_structure_theme??0,  hasData:cm.capital_structure_theme!=null,  label:'Capital Structure',  val:''},
-        cashw: {s:cm.cash_workcap_theme??0,       hasData:cm.cash_workcap_theme!=null,       label:'Cash/Working Cap',   val:''},
-        capal: {s:cm.capital_allocation_theme??0, hasData:cm.capital_allocation_theme!=null, label:'Capital Allocation', val:''},
+        cash:  {s:cm.cash_score??0,       hasData:cm.cash_score!=null,       label:'CFO/PAT 3Y',    val:cm.cfo_pat_ratio!=null?cm.cfo_pat_ratio.toFixed(2)+'x':'N/A'},
+        qtr:   {s:cm.qtr_growth_score??0, hasData:cm.qtr_growth_score!=null, label:'QTR PAT YoY',   val:sigPipeFmt(cm.qtr_profit_yoy_pct,1,'%')},
+        opm:   {s:cm.opm_trend_score??0,  hasData:cm.opm_trend_score!=null,  label:'OPM Trend',     val:sigPipeFmt(cm.opm_trend_pp,1,'pp')},
+        grow:  {s:cm.growth_score??0,     hasData:cm.growth_score!=null,     label:'EPS Growth',    val:sigPipeFmt(cm.earnings_growth_yoy,1,'%')},
+        roa:   {s:cm.roa_score??0,        hasData:cm.roa_score!=null,        label:'ROA%',          val:sigPipeFmt(cm.roa_pct,2,'%')},
+        revg:  {s:cm.revenue_growth_score??0, hasData:cm.revenue_growth_score!=null, label:'Revenue Growth', val:sigPipeFmt(cm.revenue_growth_yoy,1,'%')},
+        qoq:   {s:cm.earnings_growth_qoq_score??0, hasData:cm.earnings_growth_qoq_score!=null, label:'QTR PAT QoQ', val:sigPipeFmt(cm.earnings_growth_qoq,1,'%')},
+        liq:   {s:cm.liquidity_score??0,  hasData:cm.liquidity_score!=null,  label:'Current Ratio', val:cm.current_ratio!=null?cm.current_ratio.toFixed(2)+'x':'N/A'},
+        dil:   {s:cm.dilution_score??0,   hasData:cm.dilution_score!=null,   label:'Dilution YoY',  val:sigPipeFmt(cm.dilution_yoy_pct,2,'%')},
+        ccc:   {s:cm.ccc_trend_score??0,  hasData:cm.ccc_trend_score!=null,  label:'CCC Trend',     val:cm.ccc_trend_days!=null?sigPipeFmt(cm.ccc_trend_days,1,'d'):'N/A'},
+        div:   {s:cm.dividend_score??0,   hasData:cm.dividend_score!=null,   label:'Div Yield',     val:sigPipeFmt(cm.dividend_yield_pct,2,'%')},
     };
 }
 
@@ -1683,17 +1689,16 @@ function sigRenderList() {
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
                 <span style="font-size:12px;font-weight:800;color:#e2e8f0">${sig.ticker}</span>
                 <div style="display:flex;align-items:center;gap:5px;">
-                    ${sig.pipe&&sig.pipe.rating?`<span class="sig-pill" style="background:${sigPipeColor(sig.pipe.rating)}18;color:${sigPipeColor(sig.pipe.rating)};font-size:7px;border:1px solid ${sigPipeColor(sig.pipe.rating)}44">P·${sig.pipe.rating.replace(' BUY','B').replace(' SELL','S').replace('STRONG','S').replace('NO DATA','—')}</span>`:''}
                     <span style="font-size:12px;font-weight:800;color:${sig.ratingColor}">${sig.comp??'—'}</span>
                     <span class="sig-pill" style="background:${sig.ratingColor}22;color:${sig.ratingColor};font-size:8px">${sig.rating?sig.rating.replace(' BUY','').replace('STRONG','STR'):'NO DATA'}</span>
                 </div>
             </div>
             <div class="sig-bar-wrap"><div class="sig-bar-fill" style="width:${sig.comp??0}%;background:${sig.ratingColor}"></div></div>
             <div style="display:flex;gap:8px;margin-top:5px;">
-                <span style="font-size:8px;color:${fc}">F${sig.F.score}</span>
-                <span style="font-size:8px;color:${tc}">T${sig.T.score}</span>
-                <span style="font-size:8px;color:${vc}">V${sig.V.score}</span>
-                <span style="font-size:8px;color:${sc_}">S${sig.S.score}</span>
+                <span style="font-size:8px;color:${fc}">F${sig.F.score??'—'}</span>
+                <span style="font-size:8px;color:${tc}">T${sig.T.score??'—'}</span>
+                <span style="font-size:8px;color:${vc}">V${sig.V.score??'—'}</span>
+                <span style="font-size:8px;color:${sc_}">S${sig.S.score??'—'}</span>
                 <span style="font-size:8px;color:#4a5568;margin-left:auto">${sig.sector.substring(0,10)}</span>
             </div>
         </div>`;
@@ -1812,43 +1817,6 @@ function sigRenderDetail(ticker) {
         }).join('')}
     </div>`;
 
-    // QUANT RATING (derived_metrics.calculated_metrics — pipeline v3 scoring)
-    // Rendered via sigPillarCard so it behaves exactly like the other sections.
-    const cm=sig.pipe?.cm||{};
-    if(cm.composite_score!==null&&cm.composite_score!==undefined){
-        const pc=sigPipeColor(cm.rating);
-        const sv=(v,dec,suf)=>({has:v!==null&&v!==undefined, txt:sigPipeFmt(v,dec,suf)});
-        const pipeSub={
-            call:  {s:Math.round(cm.composite_score), hasData:true, label:'MODEL CALL', val:cm.rating||''},
-            pf:    {s:cm.fundamental_score!=null?Math.round(cm.fundamental_score):0, hasData:cm.fundamental_score!=null, label:'FUNDAMENTAL', val:''},
-            pt:    {s:cm.technical_score!=null?Math.round(cm.technical_score):0,   hasData:cm.technical_score!=null,   label:'TECHNICAL',   val:''},
-            pv:    {s:cm.valuation_score!=null?Math.round(cm.valuation_score):0,   hasData:cm.valuation_score!=null,   label:'VALUATION',   val:''},
-            ps:    {s:cm.sentiment_score!=null?Math.round(cm.sentiment_score):0,   hasData:cm.sentiment_score!=null,   label:'SENTIMENT',   val:''},
-            cash:  {s:cm.cash_score??0,       hasData:cm.cash_score!=null,       label:'CFO/PAT 3Y',  val:cm.cfo_pat_ratio!=null?cm.cfo_pat_ratio.toFixed(2)+'x':'N/A'},
-            qtr:   {s:cm.qtr_growth_score??0, hasData:cm.qtr_growth_score!=null, label:'QTR PAT YoY', val:sigPipeFmt(cm.qtr_profit_yoy_pct,1,'%')},
-            opm:   {s:cm.opm_trend_score??0,  hasData:cm.opm_trend_score!=null,  label:'OPM TREND',   val:sigPipeFmt(cm.opm_trend_pp,1,'pp')},
-            mom:   {s:cm.momentum_score??0,   hasData:cm.momentum_score!=null,   label:'3M RETURN',   val:sigPipeFmt(cm.return_3m_pct,1,'%')},
-            grow:  {s:cm.growth_score??0,     hasData:cm.growth_score!=null,     label:'EPS GROWTH',  val:sigPipeFmt(cm.earnings_growth_yoy,1,'%')},
-            own:   {s:cm.ownership_score??0,  hasData:cm.ownership_score!=null,  label:'OWNERSHIP',
-                    val:(cm.promoter_chg_qoq_pp!=null||cm.institutional_chg_qoq_pp!=null)
-                        ?`P${sigPipeFmt(cm.promoter_chg_qoq_pp,2,'')} I${sigPipeFmt(cm.institutional_chg_qoq_pp,2,'')}`:'N/A'},
-            roa:   {s:cm.roa_score??0,        hasData:cm.roa_score!=null,        label:'ROA%',        val:sigPipeFmt(cm.roa_pct,2,'%')},
-            revg:  {s:cm.revenue_growth_score??0, hasData:cm.revenue_growth_score!=null, label:'REV GROWTH', val:sigPipeFmt(cm.revenue_growth_yoy,1,'%')},
-            qoq:   {s:cm.earnings_growth_qoq_score??0, hasData:cm.earnings_growth_qoq_score!=null, label:'QTR PAT QOQ', val:sigPipeFmt(cm.earnings_growth_qoq,1,'%')},
-            liq:   {s:cm.liquidity_score??0,  hasData:cm.liquidity_score!=null,  label:'CURRENT RATIO', val:cm.current_ratio!=null?cm.current_ratio.toFixed(2)+'x':'N/A'},
-            dil:   {s:cm.dilution_score??0,   hasData:cm.dilution_score!=null,   label:'DILUTION YoY', val:sigPipeFmt(cm.dilution_yoy_pct,2,'%')},
-            ccc:   {s:cm.ccc_trend_score??0,  hasData:cm.ccc_trend_score!=null,  label:'CCC TREND',   val:cm.ccc_trend_days!=null?sigPipeFmt(cm.ccc_trend_days,1,'d'):'N/A'},
-            div:   {s:cm.dividend_score??0,   hasData:cm.dividend_score!=null,   label:'DIV YIELD',   val:sigPipeFmt(cm.dividend_yield_pct,2,'%')},
-            evebd: {s:cm.ev_ebitda_score??0,  hasData:cm.ev_ebitda_score!=null,  label:'EV/EBITDA',   val:cm.ev_ebitda_ratio!=null?cm.ev_ebitda_ratio.toFixed(1)+'x':'N/A'},
-            prof:  {s:cm.profitability_theme??0, hasData:cm.profitability_theme!=null, label:'θ PROFITABILITY', val:''},
-            growt: {s:cm.growth_theme??0,      hasData:cm.growth_theme!=null,      label:'θ GROWTH',    val:''},
-            capst: {s:cm.capital_structure_theme??0, hasData:cm.capital_structure_theme!=null, label:'θ CAPITAL STRUCTURE', val:''},
-            cashw: {s:cm.cash_workcap_theme??0, hasData:cm.cash_workcap_theme!=null, label:'θ CASH/WORKCAP', val:''},
-            capal: {s:cm.capital_allocation_theme??0, hasData:cm.capital_allocation_theme!=null, label:'θ CAPITAL ALLOCATION', val:''},
-        };
-        const pipePillar={score:Math.round(cm.composite_score), sub:pipeSub};
-        html+=sigPillarCard('pipe','QUANT RATING','🧮',pipePillar,pc);
-    }
 
     // ANALYST TARGET
     if(cp && tgt) {
@@ -3109,10 +3077,10 @@ function renderRankTab() {
             <td style="font-weight:800;color:#e2e8f0;font-size:8px;padding:7px 4px;max-width:50px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${sig.ticker}</td>
             <td style="color:#ddd;font-size:8px;max-width:70px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${sig.sector.substring(0,12)}</td>
             <td style="font-weight:800;color:${col}">${sc}</td>
-            <td style="color:${sigScoreColor(sig.F.score)}">${sig.F.score}</td>
-            <td style="color:${sigScoreColor(sig.T.score)}">${sig.T.score}</td>
-            <td style="color:${sigScoreColor(sig.V.score)}">${sig.V.score}</td>
-            <td style="color:${sigScoreColor(sig.S.score)}">${sig.S.score}</td>
+            <td style="color:${sigScoreColor(sig.F.score)}">${sig.F.score??'—'}</td>
+            <td style="color:${sigScoreColor(sig.T.score)}">${sig.T.score??'—'}</td>
+            <td style="color:${sigScoreColor(sig.V.score)}">${sig.V.score??'—'}</td>
+            <td style="color:${sigScoreColor(sig.S.score)}">${sig.S.score??'—'}</td>
             <td><span style="font-size:7px;font-weight:800;color:${rCol}">${sig.rating?sig.rating.replace('STRONG ','S.'):'NO DATA'}</span></td>
         </tr>`;
     }).join('');
