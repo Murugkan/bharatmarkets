@@ -2091,10 +2091,10 @@ def compute_derived_metrics(bucketed: dict, sector: str = None) -> dict:
 
     score = metrics['composite_score']
     if score is None:         metrics['rating'] = 'NO DATA'
-    elif score >= 78:         metrics['rating'] = 'STRONG BUY'
-    elif score >= 72:         metrics['rating'] = 'BUY'
-    elif score >= 63:         metrics['rating'] = 'HOLD'
-    elif score >= 54:         metrics['rating'] = 'SELL'
+    elif score >= 73:         metrics['rating'] = 'STRONG BUY'
+    elif score >= 67:         metrics['rating'] = 'BUY'
+    elif score >= 55:         metrics['rating'] = 'HOLD'
+    elif score >= 48:         metrics['rating'] = 'SELL'
     else:                     metrics['rating'] = 'STRONG SELL'
 
     metrics['sector_weights'] = {
