@@ -629,7 +629,7 @@ SECTOR_PROFILES = {
     "Information Technology": {
         "fundamental": 0.4, "technical": 0.25, "valuation": 0.25, "sentiment": 0.1,
         "de_limit": 0.5,  "roe_excellent": 22, "roce_excellent": 25, "roa_excellent": 18,
-        "margin_good": 16, "pe_fair": 26, "pb_fair": 7.0, "ev_ebitda_fair": 18,
+        "margin_good": 16, "pe_fair": 26, "pb_fair": 7.0, "ev_ebitda_fair": 18, "ps_fair": 5.5,
     },
     "Financials": {
         "fundamental": 0.5, "technical": 0.15, "valuation": 0.25, "sentiment": 0.1,
@@ -639,47 +639,47 @@ SECTOR_PROFILES = {
     "Consumer Staples": {
         "fundamental": 0.4, "technical": 0.2, "valuation": 0.3, "sentiment": 0.1,
         "de_limit": 1.0,  "roe_excellent": 25, "roce_excellent": 20, "roa_excellent": 15,
-        "margin_good": 12, "pe_fair": 45, "pb_fair": 10.0, "ev_ebitda_fair": 16,
+        "margin_good": 12, "pe_fair": 45, "pb_fair": 10.0, "ev_ebitda_fair": 16, "ps_fair": 4.0,
     },
     "Consumer Discretionary": {
         "fundamental": 0.4, "technical": 0.2, "valuation": 0.3, "sentiment": 0.1,
         "de_limit": 1.5,  "roe_excellent": 18, "roce_excellent": 15, "roa_excellent": 10,
-        "margin_good": 8,  "pe_fair": 40, "pb_fair": 6.0, "ev_ebitda_fair": 16,
+        "margin_good": 8,  "pe_fair": 40, "pb_fair": 6.0, "ev_ebitda_fair": 16, "ps_fair": 2.5,
     },
     "Healthcare": {
         "fundamental": 0.4, "technical": 0.2, "valuation": 0.3, "sentiment": 0.1,
         "de_limit": 1.5,  "roe_excellent": 20, "roce_excellent": 18, "roa_excellent": 12,
-        "margin_good": 14, "pe_fair": 32, "pb_fair": 5.0, "ev_ebitda_fair": 18,
+        "margin_good": 14, "pe_fair": 32, "pb_fair": 5.0, "ev_ebitda_fair": 18, "ps_fair": 4.5,
     },
     "Industrials": {
         "fundamental": 0.5, "technical": 0.15, "valuation": 0.25, "sentiment": 0.1,
         "de_limit": 2.0,  "roe_excellent": 18, "roce_excellent": 20, "roa_excellent": 8,
-        "margin_good": 8,  "pe_fair": 32, "pb_fair": 5.0, "ev_ebitda_fair": 14,
+        "margin_good": 8,  "pe_fair": 32, "pb_fair": 5.0, "ev_ebitda_fair": 14, "ps_fair": 2.0,
     },
     "Defence": {
         "fundamental": 0.5, "technical": 0.15, "valuation": 0.25, "sentiment": 0.1,
         "de_limit": 1.0,  "roe_excellent": 18, "roce_excellent": 20, "roa_excellent": 8,
-        "margin_good": 12, "pe_fair": 38, "pb_fair": 8.0, "ev_ebitda_fair": 20,
+        "margin_good": 12, "pe_fair": 38, "pb_fair": 8.0, "ev_ebitda_fair": 20, "ps_fair": 4.0,
     },
     "Energy": {
         "fundamental": 0.5, "technical": 0.2, "valuation": 0.2, "sentiment": 0.1,
         "de_limit": 2.5,  "roe_excellent": 14, "roce_excellent": 12, "roa_excellent": 6,
-        "margin_good": 8,  "pe_fair": 13, "pb_fair": 1.8, "ev_ebitda_fair": 7,
+        "margin_good": 8,  "pe_fair": 13, "pb_fair": 1.8, "ev_ebitda_fair": 7, "ps_fair": 0.8,
     },
     "Utilities": {
         "fundamental": 0.5, "technical": 0.15, "valuation": 0.25, "sentiment": 0.1,
         "de_limit": 3.0,  "roe_excellent": 12, "roce_excellent": 10, "roa_excellent": 4,
-        "margin_good": 12, "pe_fair": 16, "pb_fair": 2.2, "ev_ebitda_fair": 9,
+        "margin_good": 12, "pe_fair": 16, "pb_fair": 2.2, "ev_ebitda_fair": 9, "ps_fair": 2.0,
     },
     "Materials": {
         "fundamental": 0.5, "technical": 0.2, "valuation": 0.2, "sentiment": 0.1,
         "de_limit": 2.5,  "roe_excellent": 16, "roce_excellent": 14, "roa_excellent": 7,
-        "margin_good": 10, "pe_fair": 18, "pb_fair": 2.8, "ev_ebitda_fair": 8,
+        "margin_good": 10, "pe_fair": 18, "pb_fair": 2.8, "ev_ebitda_fair": 8, "ps_fair": 1.2,
     },
     "Telecom": {
         "fundamental": 0.5, "technical": 0.15, "valuation": 0.25, "sentiment": 0.1,
         "de_limit": 3.0,  "roe_excellent": 10, "roce_excellent": 8, "roa_excellent": 5,
-        "margin_good": 10, "pe_fair": 28, "pb_fair": 4.5, "ev_ebitda_fair": 7,
+        "margin_good": 10, "pe_fair": 28, "pb_fair": 4.5, "ev_ebitda_fair": 7, "ps_fair": 2.5,
     },
     "Real Estate": {
         # GICS split Real Estate out from Financials as its own sector in 2016.
@@ -687,13 +687,13 @@ SECTOR_PROFILES = {
         # workspace/co-working). Revisit once more Real Estate names are added.
         "fundamental": 0.4, "technical": 0.2, "valuation": 0.3, "sentiment": 0.1,
         "de_limit": 3.0,  "roe_excellent": 12, "roce_excellent": 10, "roa_excellent": 5,
-        "margin_good": 8,  "pe_fair": 35, "pb_fair": 3.0, "ev_ebitda_fair": 12,
+        "margin_good": 8,  "pe_fair": 35, "pb_fair": 3.0, "ev_ebitda_fair": 12, "ps_fair": 3.0,
     },
     # Fallback
     "Other": {
         "fundamental": 0.5, "technical": 0.15, "valuation": 0.25, "sentiment": 0.1,
         "de_limit": 2.0,  "roe_excellent": 15, "roce_excellent": 15, "roa_excellent": 8,
-        "margin_good": 10, "pe_fair": 22, "pb_fair": 3.5, "ev_ebitda_fair": 12,
+        "margin_good": 10, "pe_fair": 22, "pb_fair": 3.5, "ev_ebitda_fair": 12, "ps_fair": 2.5,
     },
 }
 
@@ -1800,6 +1800,28 @@ def compute_derived_metrics(bucketed: dict, sector: str = None) -> dict:
                 metrics['cash_score'] = cash_score
                 fund_cash_workcap.append(cash_score)
 
+    # Net cash position (cash - debt, as % of market cap) — a balance-sheet
+    # safety margin measured against market value, distinct from D/E (which
+    # is measured against book equity, so it can look modest even when the
+    # market has priced in significant absolute leverage relative to the
+    # company's size). Filed under Capital Structure alongside D/E, not
+    # Cash/Workcap — this is about balance-sheet safety, not cash generation
+    # quality. Excluded for Financials — deposits/borrowings are the core
+    # business for a lender, not a risk signal to net against cash.
+    if sector != 'Financials':
+        cash_bal = annual_series('cash_and_equivalents', n=1)
+        debt_bal = annual_series('borrowings', n=1)
+        mcap = val.get('market', {}).get('market_cap')
+        if cash_bal and debt_bal and isinstance(mcap, (int, float)) and mcap > 0:
+            net_cash_cr = cash_bal[0] - debt_bal[0]
+            mcap_cr = mcap / 1e7
+            net_cash_pct = net_cash_cr / mcap_cr * 100
+            metrics['net_cash_pct_mcap'] = round(net_cash_pct, 2)
+            net_cash_score = interp_score(net_cash_pct, [(-100, 15), (-50, 30), (-20, 45),
+                                                          (0, 55), (20, 70), (50, 85), (100, 95)])
+            metrics['net_cash_score'] = net_cash_score
+            fund_capital_structure.append(net_cash_score)
+
     # Quarterly earnings trajectory: latest quarter net profit YoY (Q vs Q-4)
     def quarterly_series(field):
         d = fin.get(field, {})
@@ -1920,6 +1942,21 @@ def compute_derived_metrics(bucketed: dict, sector: str = None) -> dict:
                                          (pe_fair * 2.5, 25), (pe_fair * 4, 10)])
         metrics['pe_score'] = pe_score
         valuation_components.append(pe_score)
+
+        # PE compression: forward vs trailing. Positive compression (forward
+        # cheaper than trailing) means the market expects earnings growth —
+        # can look expensive on trailing PE alone while actually being
+        # reasonably priced forward. Negative compression is the opposite
+        # warning: a low trailing PE can be a value trap if forward PE is
+        # rising, meaning earnings are expected to shrink.
+        pe_forward = val.get('pe', {}).get('pe_forward')
+        if isinstance(pe_forward, (int, float)) and pe_forward > 0:
+            compression_pct = (pe_ttm - pe_forward) / pe_ttm * 100
+            metrics['pe_compression_pct'] = round(compression_pct, 2)
+            compression_score = interp_score(compression_pct, [(-50, 20), (-20, 35), (0, 50),
+                                                                 (20, 65), (50, 80), (80, 95)])
+            metrics['pe_compression_score'] = compression_score
+            valuation_components.append(compression_score)
     else:
         # Loss-maker: PE undefined because earnings are negative → penalise,
         # don't silently skip. Only when we can confirm losses from margin.
@@ -1954,6 +1991,26 @@ def compute_derived_metrics(bucketed: dict, sector: str = None) -> dict:
             metrics['ev_ebitda_score'] = ev_ebitda_score
             valuation_components.append(ev_ebitda_score)
 
+    # Price/Sales (EV/Revenue fallback) — most valuable exactly where PE
+    # can't be used at all: loss-makers get a flat pe_score=15 penalty
+    # above with no differentiation between "modestly priced turnaround"
+    # and "wildly overpriced story stock". P/S gives a real, differentiated
+    # read in exactly that case, on top of complementing PE/PB/EV-EBITDA
+    # generally. Skipped for Financials — same reasoning as EV/EBITDA.
+    if sector != 'Financials':
+        ps = val.get('pe', {}).get('price_to_sales')
+        ps_fair = sector_profile.get('ps_fair', 2.5)
+        if not (isinstance(ps, (int, float)) and ps > 0):
+            ev_rev = val.get('pe', {}).get('ev_to_revenue')
+            ps = ev_rev if isinstance(ev_rev, (int, float)) and ev_rev > 0 else None
+        if ps:
+            metrics['ps_ratio'] = round(ps, 2)
+            ps_score = interp_score(ps, [(ps_fair * 0.3, 100), (ps_fair * 0.7, 80),
+                                          (ps_fair, 65), (ps_fair * 1.5, 45),
+                                          (ps_fair * 2.5, 25), (ps_fair * 4, 10)])
+            metrics['ps_score'] = ps_score
+            valuation_components.append(ps_score)
+
     valuation_score = round(sum(valuation_components) / len(valuation_components), 1) \
                       if valuation_components else None
     metrics['valuation_score'] = valuation_score
@@ -1976,6 +2033,18 @@ def compute_derived_metrics(bucketed: dict, sector: str = None) -> dict:
         elif not above_50 and not above_200: ma_score = 30
         metrics['ma_score'] = ma_score
         technical_components.append(ma_score)
+
+        # MA trend strength — continuous magnitude, complementing the binary
+        # above/below check above. A stock 2% above its 50DMA and one 25%
+        # above get the same ma_score today; this captures the difference.
+        ma50_diff_pct = price.get('ma_50d_diff_pct')
+        if isinstance(ma50_diff_pct, (int, float)):
+            ma50_pct = ma50_diff_pct * 100
+            metrics['ma_strength_pct'] = round(ma50_pct, 2)
+            ma_strength_score = interp_score(ma50_pct, [(-30, 15), (-10, 35), (0, 50),
+                                                         (10, 65), (25, 80), (50, 95)])
+            metrics['ma_strength_score'] = ma_strength_score
+            technical_components.append(ma_strength_score)
 
     # 52-week position: (price - 52w_low) / (52w_high - 52w_low)
     w52_high = price.get('52_week', {}).get('high')
@@ -2000,6 +2069,40 @@ def compute_derived_metrics(bucketed: dict, sector: str = None) -> dict:
                                               (15, 75), (30, 90), (50, 100)])
             metrics['momentum_score'] = mom_score
             technical_components.append(mom_score)
+
+    # RSI-14 — classic overbought/oversold oscillator, only possible now
+    # that daily OHLCV is restored. Hump-shaped, not monotonic: mild
+    # oversold (~20-30) scores highest on mean-reversion/bounce potential,
+    # neutral mid-range is moderate, overbought (>70) is scored as caution
+    # rather than strength.
+    if isinstance(ohlcv, list) and len(ohlcv) >= 15:
+        closes = [b.get('Close') for b in ohlcv[:15]]
+        if all(isinstance(c, (int, float)) for c in closes):
+            diffs = [closes[i] - closes[i + 1] for i in range(14)]
+            gains = [d for d in diffs if d > 0]
+            losses = [-d for d in diffs if d < 0]
+            avg_gain = sum(gains) / 14
+            avg_loss = sum(losses) / 14
+            rsi = 100.0 if avg_loss == 0 else 100 - 100 / (1 + avg_gain / avg_loss)
+            metrics['rsi_14'] = round(rsi, 1)
+            rsi_score = interp_score(rsi, [(20, 60), (30, 70), (45, 60),
+                                           (55, 55), (70, 45), (85, 25)])
+            metrics['rsi_score'] = rsi_score
+            technical_components.append(rsi_score)
+
+    # All-Time-High distance — a different, sometimes more revealing
+    # reference than 52-week high. A stock can sit near its 52W high while
+    # still being deep below its ATH (still recovering from a longer
+    # drawdown) — week52_score alone can't distinguish that from a stock
+    # genuinely making new highs.
+    ath = price.get('all_time_high')
+    if close and ath and ath > 0:
+        ath_dist_pct = (close - ath) / ath * 100
+        metrics['ath_distance_pct'] = round(ath_dist_pct, 2)
+        ath_score = interp_score(ath_dist_pct, [(-70, 20), (-40, 35), (-20, 50),
+                                                 (-10, 65), (-3, 80), (0, 95)])
+        metrics['ath_score'] = ath_score
+        technical_components.append(ath_score)
 
     technical_score = round(sum(technical_components) / len(technical_components), 1) \
                       if technical_components else None
@@ -2065,6 +2168,43 @@ def compute_derived_metrics(bucketed: dict, sector: str = None) -> dict:
         ownership_score = round(sum(ownership_parts) / len(ownership_parts))
         metrics['ownership_score'] = ownership_score
         sentiment_components.append(ownership_score)
+
+    # AI qualitative insights (guidance.json, refreshed quarterly/monthly —
+    # NOT real-time). Deliberately excludes the AI's own 'valuation' signal:
+    # that assessment goes stale fast as price moves, while we already have
+    # much better real-time quantitative valuation metrics (PE/PB/EV-EBITDA/
+    # P-S/PE-compression) above. The other 6 dimensions are structural
+    # business-quality views that don't need daily freshness.
+    ai_guidance = bucketed.get('derived_metrics', {}).get('ai_insights_guidance', {})
+    ai_analysis = ai_guidance.get('insights', {}).get('analysis', {})
+    signal_map = {'strong positive': 90, 'positive': 75, 'neutral': 50,
+                  'caution': 35, 'negative': 25, 'strong negative': 15}
+    ai_dims = ('cash_strength', 'catalyst', 'growth', 'moat', 'opportunity', 'profitability')
+    ai_scores = []
+    for dim in ai_dims:
+        sig = ai_analysis.get(dim, {}).get('signal')
+        if isinstance(sig, str) and sig.strip().lower() in signal_map:
+            ai_scores.append(signal_map[sig.strip().lower()])
+    ai_date = ai_guidance.get('insights', {}).get('date')
+    if ai_date:
+        metrics['ai_insights_date'] = ai_date
+    if ai_scores:
+        ai_qual_score = round(sum(ai_scores) / len(ai_scores))
+        metrics['ai_qualitative_score'] = ai_qual_score
+        metrics['ai_qualitative_dims_used'] = len(ai_scores)
+        sentiment_components.append(ai_qual_score)
+
+    # Management confidence (guidance.json) — same source, same staleness
+    # caveat, scored separately since it's a distinct signal (how the AI
+    # read management's own tone/credibility) rather than a business-quality
+    # assessment.
+    mgmt_confidence = ai_guidance.get('guidance', {}).get('management', {}).get('confidence')
+    if isinstance(mgmt_confidence, str):
+        conf_map = {'high': 70, 'medium': 50, 'low': 30}
+        conf_score = conf_map.get(mgmt_confidence.strip().lower())
+        if conf_score is not None:
+            metrics['management_confidence_score'] = conf_score
+            sentiment_components.append(conf_score)
 
     sentiment_score = round(sum(sentiment_components) / len(sentiment_components)) \
                       if sentiment_components else None
@@ -3570,14 +3710,16 @@ def main():
         bucketed = standardize_field_names(bucketed)
 
         # Derived metrics run last — after all renames so field paths are stable
-        bucketed = compute_derived_metrics(bucketed, sector=sector_map.get(symbol))
-        bucketed = reorganize_derived_metrics_guidance(bucketed)
-
-        # Add guidance data from guidance.json
+        # Add guidance data from guidance.json — must happen BEFORE
+        # compute_derived_metrics() runs, since that function reads
+        # derived_metrics.ai_insights_guidance for the sentiment pillar.
         if symbol in guidance_data:
             if 'derived_metrics' not in bucketed:
                 bucketed['derived_metrics'] = {}
             bucketed['derived_metrics']['ai_insights_guidance'] = guidance_data[symbol]
+
+        bucketed = compute_derived_metrics(bucketed, sector=sector_map.get(symbol))
+        bucketed = reorganize_derived_metrics_guidance(bucketed)
 
         output[symbol] = bucketed
 

@@ -1609,6 +1609,7 @@ function sigFundamentalSub(cm) {
         qoq:   {s:cm.earnings_growth_qoq_score??0, hasData:cm.earnings_growth_qoq_score!=null, label:'QTR PAT QoQ', val:sigPipeFmt(cm.earnings_growth_qoq,1,'%')},
         liq:   {s:cm.liquidity_score??0,  hasData:cm.liquidity_score!=null,  label:'Current Ratio', val:cm.current_ratio!=null?cm.current_ratio.toFixed(2)+'x':'N/A'},
         dil:   {s:cm.dilution_score??0,   hasData:cm.dilution_score!=null,   label:'Dilution YoY',  val:sigPipeFmt(cm.dilution_yoy_pct,2,'%')},
+        ncash: {s:cm.net_cash_score??0,   hasData:cm.net_cash_score!=null,   label:'Net Cash/MCap', val:sigPipeFmt(cm.net_cash_pct_mcap,1,'%')},
         ccc:   {s:cm.ccc_trend_score??0,  hasData:cm.ccc_trend_score!=null,  label:'CCC Trend',     val:cm.ccc_trend_days!=null?sigPipeFmt(cm.ccc_trend_days,1,'d'):'N/A'},
         div:   {s:cm.dividend_score??0,   hasData:cm.dividend_score!=null,   label:'Div Yield',     val:sigPipeFmt(cm.dividend_yield_pct,2,'%')},
     };
@@ -1617,18 +1618,23 @@ function sigFundamentalSub(cm) {
 // ---------- PILLAR 2: TECHNICAL ----------
 function sigTechnicalSub(cm) {
     return {
-        ma:  {s:cm.ma_score??0,       hasData:cm.ma_score!=null,       label:'MA Trend',     val:cm.above_ma50!=null?(cm.above_ma50?'Above 50D':'Below 50D'):'N/A'},
-        w52: {s:cm.week52_score??0,   hasData:cm.week52_score!=null,   label:'52W Position', val:cm.week52_position!=null?(cm.week52_position*100).toFixed(0)+'%':'N/A'},
-        mom: {s:cm.momentum_score??0, hasData:cm.momentum_score!=null, label:'3M Momentum',  val:sigPipeFmt(cm.return_3m_pct,1,'%')},
+        ma:   {s:cm.ma_score??0,          hasData:cm.ma_score!=null,          label:'MA Trend',      val:cm.above_ma50!=null?(cm.above_ma50?'Above 50D':'Below 50D'):'N/A'},
+        mast: {s:cm.ma_strength_score??0, hasData:cm.ma_strength_score!=null, label:'MA Strength',   val:sigPipeFmt(cm.ma_strength_pct,1,'%')},
+        w52:  {s:cm.week52_score??0,      hasData:cm.week52_score!=null,      label:'52W Position',  val:cm.week52_position!=null?(cm.week52_position*100).toFixed(0)+'%':'N/A'},
+        ath:  {s:cm.ath_score??0,         hasData:cm.ath_score!=null,         label:'ATH Distance',  val:sigPipeFmt(cm.ath_distance_pct,1,'%')},
+        mom:  {s:cm.momentum_score??0,    hasData:cm.momentum_score!=null,    label:'3M Momentum',   val:sigPipeFmt(cm.return_3m_pct,1,'%')},
+        rsi:  {s:cm.rsi_score??0,         hasData:cm.rsi_score!=null,         label:'RSI (14)',      val:cm.rsi_14!=null?cm.rsi_14.toFixed(1):'N/A'},
     };
 }
 
 // ---------- PILLAR 3: VALUATION ----------
 function sigValuationSub(cm) {
     return {
-        pe: {s:cm.pe_score??0,       hasData:cm.pe_score!=null,       label:'P/E',       val:cm.pe_ratio!=null?cm.pe_ratio.toFixed(1)+'x':'N/A'},
-        pb: {s:cm.pb_score??0,       hasData:cm.pb_score!=null,       label:'P/B',       val:cm.pb_ratio!=null?cm.pb_ratio.toFixed(2)+'x':'N/A'},
-        ev: {s:cm.ev_ebitda_score??0, hasData:cm.ev_ebitda_score!=null, label:'EV/EBITDA', val:cm.ev_ebitda_ratio!=null?cm.ev_ebitda_ratio.toFixed(1)+'x':'N/A'},
+        pe:   {s:cm.pe_score??0,             hasData:cm.pe_score!=null,             label:'P/E',           val:cm.pe_ratio!=null?cm.pe_ratio.toFixed(1)+'x':(cm.pe_loss_maker?'Loss-maker':'N/A')},
+        pec:  {s:cm.pe_compression_score??0, hasData:cm.pe_compression_score!=null, label:'PE Compression', val:sigPipeFmt(cm.pe_compression_pct,1,'%')},
+        pb:   {s:cm.pb_score??0,             hasData:cm.pb_score!=null,             label:'P/B',           val:cm.pb_ratio!=null?cm.pb_ratio.toFixed(2)+'x':'N/A'},
+        ev:   {s:cm.ev_ebitda_score??0,      hasData:cm.ev_ebitda_score!=null,      label:'EV/EBITDA',     val:cm.ev_ebitda_ratio!=null?cm.ev_ebitda_ratio.toFixed(1)+'x':'N/A'},
+        ps:   {s:cm.ps_score??0,             hasData:cm.ps_score!=null,             label:'P/S',           val:cm.ps_ratio!=null?cm.ps_ratio.toFixed(2)+'x':'N/A'},
     };
 }
 
@@ -1690,7 +1696,7 @@ function sigRenderList() {
                 <span style="font-size:12px;font-weight:800;color:#e2e8f0">${sig.ticker}</span>
                 <div style="display:flex;align-items:center;gap:5px;">
                     <span style="font-size:12px;font-weight:800;color:${sig.ratingColor}">${sig.comp??'—'}</span>
-                    <span class="sig-pill" style="background:${sig.ratingColor}22;color:${sig.ratingColor};font-size:8px">${sig.rating?sig.rating.replace(' BUY','').replace('STRONG','STR'):'NO DATA'}</span>
+                    <span class="sig-pill" style="background:${sig.ratingColor}22;color:${sig.ratingColor};font-size:8px">${sig.rating?sig.rating.replace('STRONG ','STR '):'NO DATA'}</span>
                 </div>
             </div>
             <div class="sig-bar-wrap"><div class="sig-bar-fill" style="width:${sig.comp??0}%;background:${sig.ratingColor}"></div></div>
@@ -1876,7 +1882,7 @@ function sigRenderDetail(ticker) {
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
             <div><div style="font-size:8px;color:#ddd">Sector Median PE</div><div style="font-size:13px;font-weight:700;color:#e2e8f0">${sectorMedianPE?sectorMedianPE.toFixed(1)+'x':'N/A'}</div></div>
             <div><div style="font-size:8px;color:#ddd">Stock PE</div><div style="font-size:13px;font-weight:700;color:#e2e8f0">${sigToF(st.valuation?.pe?.pe_ttm)?sigToF(st.valuation?.pe?.pe_ttm).toFixed(1)+'x':'N/A'}</div></div>
-            <div><div style="font-size:8px;color:#ddd">52W Change</div><div style="font-size:13px;font-weight:700;color:#e2e8f0">${sigToF(st.price?.['52_week']?.change_pct)!==null?(sigToF(st.price['52_week'].change_pct)*100).toFixed(1)+'%':'N/A'}</div></div>
+            <div><div style="font-size:8px;color:#ddd">52W Change</div><div style="font-size:13px;font-weight:700;color:#e2e8f0">${sigToF(st.price?.['52_week']?.change_pct)!==null?sigToF(st.price['52_week'].change_pct).toFixed(1)+'%':'N/A'}</div></div>
             <div><div style="font-size:8px;color:#ddd">Beta</div><div style="font-size:13px;font-weight:700;color:#e2e8f0">${sigToF(st.price?.ltp?.beta)!==null?'β '+sigToF(st.price.ltp.beta).toFixed(2):'N/A'}</div></div>
         </div>
     </div>`;
@@ -1979,7 +1985,7 @@ const QRY_METRICS = [
     { label:'Market Cap',     group:'Price',      unit:'₹Cr', fn: s => _qN(s.valuation?.market_cap) && _qN(s.valuation.market.market_cap)/1e7 },
     { label:'52W High',       group:'Price',      unit:'₹',   fn: s => _qN(s.price?.['52_week']?.high) },
     { label:'52W Low',        group:'Price',      unit:'₹',   fn: s => _qN(s.price?.['52_week']?.low) },
-    { label:'52W Chg%',       group:'Price',      unit:'%',   fn: s => { const v=_qN(s.price?.['52_week']?.change_pct); return v!==null?v*100:null; } },
+    { label:'52W Chg%',       group:'Price',      unit:'%',   fn: s => { const v=_qN(s.price?.['52_week']?.change_pct); return v!==null?v:null; } },
     { label:'ATH',            group:'Price',      unit:'₹',   fn: s => _qN(s.price?.all_time_high) },
     { label:'50 DMA',         group:'Price',      unit:'₹',   fn: s => _qN(s.price?.ma_50d) },
     { label:'200 DMA',        group:'Price',      unit:'₹',   fn: s => _qN(s.price?.ma_200d) },
@@ -3173,7 +3179,7 @@ const CMP_GROUPS = [
             { label:'LTP',             fn: s=>_qN(s.price?.close_price||s.price?.ltp?.price), unit:'₹', hi:false },
             { label:'vs 50DMA%',       fn: s=>{const c=_qN(s.price?.close_price||s.price?.ltp?.price),d=_qN(s.price?.ma_50d);return c&&d?(c-d)/d*100:null;}, unit:'%', hi:true },
             { label:'vs 200DMA%',      fn: s=>{const c=_qN(s.price?.close_price||s.price?.ltp?.price),d=_qN(s.price?.ma_200d);return c&&d?(c-d)/d*100:null;}, unit:'%', hi:true },
-            { label:'52W Change%',     fn: s=>(_qN(s.price?.['52_week']?.change_pct)||0)*100, unit:'%', hi:true },
+            { label:'52W Change%',     fn: s=>_qN(s.price?.['52_week']?.change_pct)||0, unit:'%', hi:true },
             { label:'52W High',        fn: s=>_qN(s.price?.['52_week']?.high), unit:'₹', hi:false },
             { label:'52W Low',         fn: s=>_qN(s.price?.['52_week']?.low), unit:'₹', hi:false },
             { label:'Beta',            fn: s=>_qN(s.price?.ltp?.beta), unit:'', hi:false },
