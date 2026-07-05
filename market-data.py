@@ -618,10 +618,17 @@ SECTOR_PROFILES = {
     # roe_excellent since ROA strips out leverage; leveraged sectors
     # (Financials, Utilities, Telecom) have structurally low ROA even
     # when ROE looks great, which is exactly the point of scoring it.
+    # ev_ebitda_fair: EV/EBITDA fair-value anchor — starter estimates based
+    # on typical capital-intensity/D&A load per sector, NOT fitted to this
+    # portfolio's own current medians (some, e.g. Defence, look currently
+    # euphoric rather than a stable fair level). No entry for Financials —
+    # EBITDA isn't a meaningful concept for lenders (interest is their core
+    # revenue/expense, not a financing cost to add back), so EV/EBITDA is
+    # skipped entirely for that sector, same as cash-conversion/liquidity.
     "Information Technology": {
         "fundamental": 0.4, "technical": 0.3, "valuation": 0.2, "sentiment": 0.1,
         "de_limit": 0.5,  "roe_excellent": 22, "roce_excellent": 25, "roa_excellent": 18,
-        "margin_good": 16, "pe_fair": 26, "pb_fair": 7.0,
+        "margin_good": 16, "pe_fair": 26, "pb_fair": 7.0, "ev_ebitda_fair": 18,
     },
     "Financials": {
         "fundamental": 0.5, "technical": 0.2, "valuation": 0.2, "sentiment": 0.1,
@@ -631,47 +638,47 @@ SECTOR_PROFILES = {
     "Consumer Staples": {
         "fundamental": 0.4, "technical": 0.2, "valuation": 0.3, "sentiment": 0.1,
         "de_limit": 1.0,  "roe_excellent": 25, "roce_excellent": 20, "roa_excellent": 15,
-        "margin_good": 12, "pe_fair": 45, "pb_fair": 10.0,
+        "margin_good": 12, "pe_fair": 45, "pb_fair": 10.0, "ev_ebitda_fair": 16,
     },
     "Consumer Discretionary": {
         "fundamental": 0.4, "technical": 0.25, "valuation": 0.25, "sentiment": 0.1,
         "de_limit": 1.5,  "roe_excellent": 18, "roce_excellent": 15, "roa_excellent": 10,
-        "margin_good": 8,  "pe_fair": 40, "pb_fair": 6.0,
+        "margin_good": 8,  "pe_fair": 40, "pb_fair": 6.0, "ev_ebitda_fair": 16,
     },
     "Healthcare": {
         "fundamental": 0.4, "technical": 0.2, "valuation": 0.3, "sentiment": 0.1,
         "de_limit": 1.5,  "roe_excellent": 20, "roce_excellent": 18, "roa_excellent": 12,
-        "margin_good": 14, "pe_fair": 32, "pb_fair": 5.0,
+        "margin_good": 14, "pe_fair": 32, "pb_fair": 5.0, "ev_ebitda_fair": 18,
     },
     "Industrials": {
         "fundamental": 0.5, "technical": 0.2, "valuation": 0.2, "sentiment": 0.1,
         "de_limit": 2.0,  "roe_excellent": 18, "roce_excellent": 20, "roa_excellent": 8,
-        "margin_good": 8,  "pe_fair": 32, "pb_fair": 5.0,
+        "margin_good": 8,  "pe_fair": 32, "pb_fair": 5.0, "ev_ebitda_fair": 14,
     },
     "Defence": {
         "fundamental": 0.5, "technical": 0.2, "valuation": 0.2, "sentiment": 0.1,
         "de_limit": 1.0,  "roe_excellent": 18, "roce_excellent": 20, "roa_excellent": 8,
-        "margin_good": 12, "pe_fair": 38, "pb_fair": 8.0,
+        "margin_good": 12, "pe_fair": 38, "pb_fair": 8.0, "ev_ebitda_fair": 20,
     },
     "Energy": {
         "fundamental": 0.5, "technical": 0.3, "valuation": 0.1, "sentiment": 0.1,
         "de_limit": 2.5,  "roe_excellent": 14, "roce_excellent": 12, "roa_excellent": 6,
-        "margin_good": 8,  "pe_fair": 13, "pb_fair": 1.8,
+        "margin_good": 8,  "pe_fair": 13, "pb_fair": 1.8, "ev_ebitda_fair": 7,
     },
     "Utilities": {
         "fundamental": 0.5, "technical": 0.2, "valuation": 0.2, "sentiment": 0.1,
         "de_limit": 3.0,  "roe_excellent": 12, "roce_excellent": 10, "roa_excellent": 4,
-        "margin_good": 12, "pe_fair": 16, "pb_fair": 2.2,
+        "margin_good": 12, "pe_fair": 16, "pb_fair": 2.2, "ev_ebitda_fair": 9,
     },
     "Materials": {
         "fundamental": 0.5, "technical": 0.3, "valuation": 0.1, "sentiment": 0.1,
         "de_limit": 2.5,  "roe_excellent": 16, "roce_excellent": 14, "roa_excellent": 7,
-        "margin_good": 10, "pe_fair": 18, "pb_fair": 2.8,
+        "margin_good": 10, "pe_fair": 18, "pb_fair": 2.8, "ev_ebitda_fair": 8,
     },
     "Telecom": {
         "fundamental": 0.5, "technical": 0.2, "valuation": 0.2, "sentiment": 0.1,
         "de_limit": 3.0,  "roe_excellent": 10, "roce_excellent": 8, "roa_excellent": 5,
-        "margin_good": 10, "pe_fair": 28, "pb_fair": 4.5,
+        "margin_good": 10, "pe_fair": 28, "pb_fair": 4.5, "ev_ebitda_fair": 7,
     },
     "Real Estate": {
         # GICS split Real Estate out from Financials as its own sector in 2016.
@@ -679,13 +686,13 @@ SECTOR_PROFILES = {
         # workspace/co-working). Revisit once more Real Estate names are added.
         "fundamental": 0.4, "technical": 0.2, "valuation": 0.3, "sentiment": 0.1,
         "de_limit": 3.0,  "roe_excellent": 12, "roce_excellent": 10, "roa_excellent": 5,
-        "margin_good": 8,  "pe_fair": 35, "pb_fair": 3.0,
+        "margin_good": 8,  "pe_fair": 35, "pb_fair": 3.0, "ev_ebitda_fair": 12,
     },
     # Fallback
     "Other": {
         "fundamental": 0.5, "technical": 0.2, "valuation": 0.2, "sentiment": 0.1,
         "de_limit": 2.0,  "roe_excellent": 15, "roce_excellent": 15, "roa_excellent": 8,
-        "margin_good": 10, "pe_fair": 22, "pb_fair": 3.5,
+        "margin_good": 10, "pe_fair": 22, "pb_fair": 3.5, "ev_ebitda_fair": 12,
     },
 }
 
@@ -1826,6 +1833,42 @@ def compute_derived_metrics(bucketed: dict, sector: str = None) -> dict:
             fundamental_components.append(opm_score)
             break
 
+    # Cash Conversion Cycle trend (Screener time-series) — working-capital
+    # efficiency direction, not absolute level. "Good" CCC varies too much
+    # by business type to universalize (a distributor and a software company
+    # have nothing in common here), but *shortening* vs *lengthening* is a
+    # comparable signal everywhere. Inverted vs opm_trend_pp above — a
+    # falling CCC (collecting cash faster) is the improvement.
+    ccc_data = rat.get('screener', {}).get('cash_conversion_cycle', {})
+    if isinstance(ccc_data, dict) and len(ccc_data) >= 4:
+        keys = sorted(ccc_data, reverse=True)
+        latest_yr = int(keys[0][:4])
+        prior = [ccc_data[k] for k in keys[1:4] if latest_yr - int(k[:4]) <= 4]
+        if prior and isinstance(ccc_data[keys[0]], (int, float)):
+            ccc_trend = ccc_data[keys[0]] - (sum(prior) / len(prior))
+            metrics['ccc_trend_days'] = round(ccc_trend, 1)
+            ccc_score = interp_score(ccc_trend, [(-15, 90), (-5, 75), (0, 55),
+                                                 (5, 35), (15, 15)])
+            metrics['ccc_trend_score'] = ccc_score
+            fundamental_components.append(ccc_score)
+
+    # Dividend yield (trailing) — hump-shaped, not monotonic. Near-zero is
+    # scored neutral rather than penalised, since a fast-growing company
+    # reinvesting everything is not a red flag; a moderate yield is rewarded
+    # as a capital-return/quality signal; an extreme yield is flagged since
+    # it's often a distress or unsustainable-payout signal rather than
+    # genuine income quality.
+    div_yield = bucketed.get('company_details', {}) \
+                         .get('shareholding', {}).get('dividends', {}) \
+                         .get('trailing_annual_dividend_yield')
+    if isinstance(div_yield, (int, float)):
+        dy_pct = div_yield * 100
+        metrics['dividend_yield_pct'] = round(dy_pct, 2)
+        div_score = interp_score(dy_pct, [(0, 50), (1, 60), (3, 85),
+                                          (6, 70), (10, 40), (15, 20)])
+        metrics['dividend_score'] = div_score
+        fundamental_components.append(div_score)
+
     fundamental_score = round(sum(fundamental_components) / len(fundamental_components), 1) \
                         if fundamental_components else None
     metrics['fundamental_score'] = fundamental_score
@@ -1860,6 +1903,21 @@ def compute_derived_metrics(bucketed: dict, sector: str = None) -> dict:
                                      (pb_fair * 2.5, 25), (pb_fair * 4, 10)])
         metrics['pb_score'] = pb_score
         valuation_components.append(pb_score)
+
+    # EV/EBITDA — capital-structure-neutral valuation multiple, complements
+    # PE/PB rather than duplicating them (unaffected by leverage/tax/D&A
+    # differences that PE is sensitive to). Skipped for Financials — EBITDA
+    # isn't a meaningful concept for lenders.
+    if sector != 'Financials':
+        ev_ebitda = val.get('pe', {}).get('ev_to_ebitda')
+        ev_ebitda_fair = sector_profile.get('ev_ebitda_fair', 12)
+        if ev_ebitda and ev_ebitda > 0:
+            metrics['ev_ebitda_ratio'] = round(ev_ebitda, 2)
+            ev_ebitda_score = interp_score(ev_ebitda, [(ev_ebitda_fair * 0.3, 100), (ev_ebitda_fair * 0.7, 80),
+                                                        (ev_ebitda_fair, 65), (ev_ebitda_fair * 1.5, 45),
+                                                        (ev_ebitda_fair * 2.5, 25), (ev_ebitda_fair * 4, 10)])
+            metrics['ev_ebitda_score'] = ev_ebitda_score
+            valuation_components.append(ev_ebitda_score)
 
     valuation_score = round(sum(valuation_components) / len(valuation_components), 1) \
                       if valuation_components else None
