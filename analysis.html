@@ -1690,14 +1690,22 @@ function drawNavLine(s){
 
     // Tap/click tooltip — same wiring as drawCandlestick so taps work on the
     // NAV chart too (previously only drawCandlestick attached these).
-    cv.onclick = (e) => handleChartClick(e, cv, cv._W2||W2, cv._H2||H2);
+    // cv._skipClick guards against the synthetic "click" iOS Safari fires
+    // right after touchend — without it, that ghost click re-hits the same
+    // dot and the toggle-off branch below removes the tooltip we just showed.
+    cv.onclick = (e) => {
+      if(cv._skipClick){ cv._skipClick = false; return; }
+      handleChartClick(e, cv, cv._W2||W2, cv._H2||H2);
+    };
     cv._W2 = W2; cv._H2 = H2;
     if(!cv._tb){
       cv._tb = true;
       cv.addEventListener('touchend', (e) => {
         if(e.touches.length===0 && !chartInteraction.isPanning){
           const touch = e.changedTouches[0];
+          cv._skipClick = true;
           handleChartClick(new MouseEvent('click',{clientX:touch.clientX,clientY:touch.clientY}), cv, cv._W2||320, cv._H2||200);
+          setTimeout(()=>{ cv._skipClick = false; }, 400); // fallback in case no ghost click follows
         }
       }, {passive:true});
     }
