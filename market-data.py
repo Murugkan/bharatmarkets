@@ -1689,6 +1689,35 @@ def compute_derived_metrics(bucketed: dict, sector: str = None) -> dict:
         metrics['margin_score'] = margin_score
         fund_profitability.append(margin_score)
 
+    # Gross margin and EBITDA margin — same sector-aware approach as net
+    # margin, scaled since gross/EBITDA margins run structurally higher.
+    # Genuinely distinct information: a company can hold net margin steady
+    # while gross margin erodes (offset by cost cuts elsewhere), which net
+    # margin alone can't reveal. Skipped for Financials — same reasoning as
+    # EV/EBITDA and cash-conversion: "cost of revenue" and "EBITDA" aren't
+    # meaningful, comparable concepts for a lender (confirmed via real data
+    # — Yahoo returns a nonsensical 100%/0% for these on lenders).
+    if sector != 'Financials':
+        gross_margin = rat.get('ttm', {}).get('gross_margin_pct')
+        if isinstance(gross_margin, float):
+            gm_pct = gross_margin * 100
+            metrics['gross_margin_pct'] = round(gm_pct, 2)
+            gm_fair = sector_profile.get('margin_good', 10) * 2.2
+            gross_margin_score = interp_score(gm_pct, [(-5, 5), (0, 25), (gm_fair * 0.5, 55),
+                                                         (gm_fair, 85), (gm_fair * 1.75, 100)])
+            metrics['gross_margin_score'] = gross_margin_score
+            fund_profitability.append(gross_margin_score)
+
+        ebitda_margin = rat.get('ttm', {}).get('ebitda_margin_pct')
+        if isinstance(ebitda_margin, float):
+            em_pct = ebitda_margin * 100
+            metrics['ebitda_margin_pct'] = round(em_pct, 2)
+            em_fair = sector_profile.get('margin_good', 10) * 1.3
+            ebitda_margin_score = interp_score(em_pct, [(-5, 5), (0, 25), (em_fair * 0.5, 55),
+                                                          (em_fair, 85), (em_fair * 1.75, 100)])
+            metrics['ebitda_margin_score'] = ebitda_margin_score
+            fund_profitability.append(ebitda_margin_score)
+
     # Earnings growth YoY (TTM) — scored, not just stored
     rev_growth = rat.get('ttm', {}).get('earnings_growth_yoy')
     if isinstance(rev_growth, float):
@@ -1754,12 +1783,25 @@ def compute_derived_metrics(bucketed: dict, sector: str = None) -> dict:
             metrics['liquidity_score'] = liquidity_score
             fund_capital_structure.append(liquidity_score)
 
-    # Share dilution (YoY change in shares outstanding) — catches cases
+        quick_ratio = rat.get('ttm', {}).get('quick_ratio')
+        if isinstance(quick_ratio, (int, float)):
+            metrics['quick_ratio'] = round(quick_ratio, 2)
+            quick_score = interp_score(quick_ratio, [(0.3, 15), (0.7, 40), (1.0, 70),
+                                                      (1.8, 90), (3, 80), (6, 50)])
+            metrics['quick_score'] = quick_score
+            fund_capital_structure.append(quick_score)
+
+    # Share dilution (YoY change in diluted share count) — catches cases
     # where "earnings growth" is partly/wholly diluted away by new share
     # issuance, which the earnings-growth metrics above can't see since
     # they're not on a per-share basis. Buybacks (negative dilution) score
     # well; heavy dilution scores poorly. Continuous, not a hard cutoff.
-    shares_hist = val.get('history', {}).get('shares_outstanding', {})
+    # Prefers diluted_shares over shares_outstanding — diluted correctly
+    # captures the effect of options/convertibles, which basic shares
+    # outstanding misses entirely.
+    shares_hist = val.get('history', {}).get('diluted_shares', {})
+    if not (isinstance(shares_hist, dict) and len(shares_hist) >= 2):
+        shares_hist = val.get('history', {}).get('shares_outstanding', {})
     if isinstance(shares_hist, dict) and len(shares_hist) >= 2:
         yrs = sorted(shares_hist.items(), reverse=True)
         latest_shares, prior_shares = yrs[0][1], yrs[1][1]
@@ -1821,6 +1863,39 @@ def compute_derived_metrics(bucketed: dict, sector: str = None) -> dict:
                                                           (0, 55), (20, 70), (50, 85), (100, 95)])
             metrics['net_cash_score'] = net_cash_score
             fund_capital_structure.append(net_cash_score)
+
+    # Earnings quality flags — all filed under Cash/Workcap theme alongside
+    # CFO/PAT and CCC trend, since they're about whether reported earnings
+    # are trustworthy/repeatable, not about the level of profitability itself.
+    if sector != 'Financials':
+        other_income = annual_series('other_income', n=1)
+        ebit_s = annual_series('ebit', n=1)
+        if other_income and ebit_s and ebit_s[0]:
+            oi_ratio_pct = other_income[0] / abs(ebit_s[0]) * 100
+            metrics['other_income_pct_ebit'] = round(oi_ratio_pct, 2)
+            oi_score = interp_score(oi_ratio_pct, [(0, 80), (10, 70), (25, 50), (50, 30), (100, 15)])
+            metrics['other_income_score'] = oi_score
+            fund_cash_workcap.append(oi_score)
+
+        exceptional = annual_series('exceptional_items', n=1)
+        pbt_s = annual_series('profit_before_tax', n=1)
+        if exceptional and pbt_s and pbt_s[0]:
+            exc_ratio_pct = abs(exceptional[0]) / abs(pbt_s[0]) * 100
+            metrics['exceptional_items_pct_pbt'] = round(exc_ratio_pct, 2)
+            exc_score = interp_score(exc_ratio_pct, [(0, 80), (10, 65), (25, 45), (50, 25), (100, 10)])
+            metrics['exceptional_items_score'] = exc_score
+            fund_cash_workcap.append(exc_score)
+
+        ar_s = annual_series('accounts_receivable', n=2)
+        rev_s = annual_series('revenue', n=2)
+        if ar_s and rev_s and len(ar_s) >= 2 and len(rev_s) >= 2 and ar_s[1] and rev_s[1]:
+            ar_growth_pct = (ar_s[0] - ar_s[1]) / ar_s[1] * 100
+            rev_growth_pct = (rev_s[0] - rev_s[1]) / rev_s[1] * 100
+            ar_divergence = ar_growth_pct - rev_growth_pct
+            metrics['receivables_divergence_pp'] = round(ar_divergence, 2)
+            ar_score = interp_score(ar_divergence, [(-20, 80), (0, 70), (10, 50), (25, 30), (50, 15)])
+            metrics['receivables_score'] = ar_score
+            fund_cash_workcap.append(ar_score)
 
     # Quarterly earnings trajectory: latest quarter net profit YoY (Q vs Q-4)
     def quarterly_series(field):
@@ -1991,18 +2066,20 @@ def compute_derived_metrics(bucketed: dict, sector: str = None) -> dict:
             metrics['ev_ebitda_score'] = ev_ebitda_score
             valuation_components.append(ev_ebitda_score)
 
-    # Price/Sales (EV/Revenue fallback) — most valuable exactly where PE
+    # EV/Revenue (Price/Sales fallback) — most valuable exactly where PE
     # can't be used at all: loss-makers get a flat pe_score=15 penalty
     # above with no differentiation between "modestly priced turnaround"
-    # and "wildly overpriced story stock". P/S gives a real, differentiated
-    # read in exactly that case, on top of complementing PE/PB/EV-EBITDA
-    # generally. Skipped for Financials — same reasoning as EV/EBITDA.
+    # and "wildly overpriced story stock". Prefers EV/Revenue over P/S as
+    # primary since it's capital-structure-neutral like EV/EBITDA (P/S
+    # ignores debt entirely — two companies with identical P/S can carry
+    # very different real valuations if one is far more leveraged).
+    # Skipped for Financials — same reasoning as EV/EBITDA.
     if sector != 'Financials':
-        ps = val.get('pe', {}).get('price_to_sales')
+        ps = val.get('pe', {}).get('ev_to_revenue')
         ps_fair = sector_profile.get('ps_fair', 2.5)
         if not (isinstance(ps, (int, float)) and ps > 0):
-            ev_rev = val.get('pe', {}).get('ev_to_revenue')
-            ps = ev_rev if isinstance(ev_rev, (int, float)) and ev_rev > 0 else None
+            price_to_sales = val.get('pe', {}).get('price_to_sales')
+            ps = price_to_sales if isinstance(price_to_sales, (int, float)) and price_to_sales > 0 else None
         if ps:
             metrics['ps_ratio'] = round(ps, 2)
             ps_score = interp_score(ps, [(ps_fair * 0.3, 100), (ps_fair * 0.7, 80),
@@ -2104,6 +2181,52 @@ def compute_derived_metrics(bucketed: dict, sector: str = None) -> dict:
         metrics['ath_score'] = ath_score
         technical_components.append(ath_score)
 
+    # Beta — mild preference for lower volatility. Deliberately gentle
+    # (narrow score range): beta isn't cleanly "good/bad" the way the other
+    # technical signals are — low beta can mean stability or just low growth
+    # potential — so it shouldn't swing the pillar much on its own.
+    beta = price.get('ltp', {}).get('beta')
+    if isinstance(beta, (int, float)):
+        metrics['beta'] = round(beta, 2)
+        beta_score = interp_score(beta, [(0.3, 65), (0.7, 60), (1.0, 55),
+                                          (1.5, 45), (2.5, 30)])
+        metrics['beta_score'] = beta_score
+        technical_components.append(beta_score)
+
+    # Volume surge — direction-conditioned, not scored as inherently
+    # good/bad on its own. Elevated volume on an up day is bullish
+    # confirmation; the same elevated volume on a down day is bearish
+    # confirmation. Normal volume stays neutral regardless of direction.
+    day_vol = price.get('volume', {}).get('day_volume')
+    avg_vol = price.get('volume', {}).get('avg_volume_3mo') or price.get('volume', {}).get('avg_volume')
+    chg_pct = price.get('ltp', {}).get('change_pct')
+    if isinstance(day_vol, (int, float)) and isinstance(avg_vol, (int, float)) and avg_vol > 0 \
+            and isinstance(chg_pct, (int, float)):
+        vol_ratio = day_vol / avg_vol
+        metrics['volume_ratio'] = round(vol_ratio, 2)
+        price_dir = 1 if chg_pct > 0 else (-1 if chg_pct < 0 else 0)
+        if vol_ratio > 1.3:
+            raw_vol_score = 50 + price_dir * min((vol_ratio - 1) * 20, 35)
+            vol_score = round(max(10, min(95, raw_vol_score)))
+        else:
+            vol_score = 50
+        metrics['volume_score'] = vol_score
+        technical_components.append(vol_score)
+
+    # Relative strength vs index — excess/lagging return vs benchmark over
+    # the same 52-week window. Distinct from week52_score (absolute
+    # position in its own range) — a stock can sit near its own 52W high
+    # while still lagging a strongly rising index, or vice versa.
+    stock_52w = price.get('52_week', {}).get('change_pct')
+    index_52w = websignals.get('index_52w_change')
+    if isinstance(stock_52w, (int, float)) and isinstance(index_52w, (int, float)):
+        relative_strength_pp = stock_52w - (index_52w * 100)
+        metrics['relative_strength_pp'] = round(relative_strength_pp, 2)
+        rel_score = interp_score(relative_strength_pp, [(-30, 20), (-10, 35), (0, 50),
+                                                          (10, 65), (30, 80), (60, 95)])
+        metrics['relative_strength_score'] = rel_score
+        technical_components.append(rel_score)
+
     technical_score = round(sum(technical_components) / len(technical_components), 1) \
                       if technical_components else None
     metrics['technical_score'] = technical_score
@@ -2131,8 +2254,33 @@ def compute_derived_metrics(bucketed: dict, sector: str = None) -> dict:
         elif upside < 0:  analyst_component = max(10,  analyst_component - 10)
 
     if analyst_component is not None:
+        # Confidence dampening: blend toward neutral (50) when few analysts
+        # cover the stock. A "Strong Buy" from 2 analysts shouldn't carry
+        # the same weight as one from 20 — restores what the old
+        # (independently-computed) sig system used to do before the merge,
+        # now correctly inside the actual pipeline score instead of a
+        # separate parallel calculation.
+        analyst_count = websignals.get('analyst_count')
+        if isinstance(analyst_count, (int, float)) and analyst_count > 0:
+            confidence = min(1.0, analyst_count / 15)
+            analyst_component = round(analyst_component * confidence + 50 * (1 - confidence))
+            metrics['analyst_count'] = analyst_count
         metrics['analyst_component'] = analyst_component
         sentiment_components.append(analyst_component)
+
+    # Analyst disagreement: target high/low spread relative to mean. Wide
+    # spread means analysts substantially disagree about fair value — a
+    # real uncertainty signal distinct from the mean-based upside above.
+    target_high = websignals.get('target_high')
+    target_low  = websignals.get('target_low')
+    if isinstance(target_high, (int, float)) and isinstance(target_low, (int, float)) \
+            and target_mean and target_mean > 0:
+        spread_pct = (target_high - target_low) / target_mean * 100
+        metrics['analyst_target_spread_pct'] = round(spread_pct, 2)
+        spread_score = interp_score(spread_pct, [(10, 75), (25, 60), (50, 45),
+                                                  (100, 30), (150, 15)])
+        metrics['analyst_agreement_score'] = spread_score
+        sentiment_components.append(spread_score)
 
     # 4b. Ownership flows: promoter + institutional (FII+DII) QoQ change in pp
     pattern = bucketed.get('company_details', {}) \
@@ -2168,6 +2316,49 @@ def compute_derived_metrics(bucketed: dict, sector: str = None) -> dict:
         ownership_score = round(sum(ownership_parts) / len(ownership_parts))
         metrics['ownership_score'] = ownership_score
         sentiment_components.append(ownership_score)
+
+    # Institutional/insider holding LEVEL — distinct from the QoQ change
+    # above. A stock with 45% institutional ownership and one with 5% carry
+    # very different risk/confidence profiles even with an identical recent
+    # change direction. Hump-shaped: very high concentration (either type)
+    # is flagged as a mild liquidity/control-risk concern, not rewarded
+    # further.
+    ownership = bucketed.get('company_details', {}).get('shareholding', {}).get('ownership', {})
+    inst_level = ownership.get('institutional_holding_pct')
+    if isinstance(inst_level, (int, float)):
+        inst_pct = inst_level * 100
+        metrics['institutional_holding_pct'] = round(inst_pct, 2)
+        inst_level_score = interp_score(inst_pct, [(5, 30), (15, 50), (30, 65),
+                                                     (50, 80), (70, 85), (90, 70)])
+        metrics['institutional_holding_score'] = inst_level_score
+        sentiment_components.append(inst_level_score)
+
+    insider_level = ownership.get('insider_holding_pct')
+    if isinstance(insider_level, (int, float)):
+        insider_pct = insider_level * 100
+        metrics['insider_holding_pct'] = round(insider_pct, 2)
+        insider_level_score = interp_score(insider_pct, [(0, 45), (10, 60), (30, 75),
+                                                           (50, 80), (75, 70), (95, 55)])
+        metrics['insider_holding_score'] = insider_level_score
+        sentiment_components.append(insider_level_score)
+
+    # Shareholder count trend — growing retail participation, a weak but
+    # real visibility/interest signal. Same QoQ-style calc pattern as
+    # dilution above.
+    shr_data = pattern.get('no_of_shareholders')
+    if isinstance(shr_data, dict):
+        shr_vals = {k: v for k, v in shr_data.items()
+                    if len(k) == 10 and isinstance(v, (int, float))}
+        if len(shr_vals) >= 2:
+            ordered = sorted(shr_vals, reverse=True)
+            latest_shr, prior_shr = shr_vals[ordered[0]], shr_vals[ordered[1]]
+            if prior_shr > 0:
+                shr_growth_pct = (latest_shr - prior_shr) / prior_shr * 100
+                metrics['shareholder_growth_qoq_pct'] = round(shr_growth_pct, 2)
+                shr_score = interp_score(shr_growth_pct, [(-20, 40), (0, 50), (10, 60),
+                                                            (30, 70), (60, 80)])
+                metrics['shareholder_growth_score'] = shr_score
+                sentiment_components.append(shr_score)
 
     # AI qualitative insights (guidance.json, refreshed quarterly/monthly —
     # NOT real-time). Deliberately excludes the AI's own 'valuation' signal:

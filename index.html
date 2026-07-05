@@ -1608,10 +1608,16 @@ function sigFundamentalSub(cm) {
         revg:  {s:cm.revenue_growth_score??0, hasData:cm.revenue_growth_score!=null, label:'Revenue Growth', val:sigPipeFmt(cm.revenue_growth_yoy,1,'%')},
         qoq:   {s:cm.earnings_growth_qoq_score??0, hasData:cm.earnings_growth_qoq_score!=null, label:'QTR PAT QoQ', val:sigPipeFmt(cm.earnings_growth_qoq,1,'%')},
         liq:   {s:cm.liquidity_score??0,  hasData:cm.liquidity_score!=null,  label:'Current Ratio', val:cm.current_ratio!=null?cm.current_ratio.toFixed(2)+'x':'N/A'},
+        quick: {s:cm.quick_score??0,      hasData:cm.quick_score!=null,      label:'Quick Ratio',   val:cm.quick_ratio!=null?cm.quick_ratio.toFixed(2)+'x':'N/A'},
         dil:   {s:cm.dilution_score??0,   hasData:cm.dilution_score!=null,   label:'Dilution YoY',  val:sigPipeFmt(cm.dilution_yoy_pct,2,'%')},
         ncash: {s:cm.net_cash_score??0,   hasData:cm.net_cash_score!=null,   label:'Net Cash/MCap', val:sigPipeFmt(cm.net_cash_pct_mcap,1,'%')},
         ccc:   {s:cm.ccc_trend_score??0,  hasData:cm.ccc_trend_score!=null,  label:'CCC Trend',     val:cm.ccc_trend_days!=null?sigPipeFmt(cm.ccc_trend_days,1,'d'):'N/A'},
         div:   {s:cm.dividend_score??0,   hasData:cm.dividend_score!=null,   label:'Div Yield',     val:sigPipeFmt(cm.dividend_yield_pct,2,'%')},
+        gm:    {s:cm.gross_margin_score??0, hasData:cm.gross_margin_score!=null, label:'Gross Margin', val:sigPipeFmt(cm.gross_margin_pct,1,'%')},
+        em:    {s:cm.ebitda_margin_score??0, hasData:cm.ebitda_margin_score!=null, label:'EBITDA Margin', val:sigPipeFmt(cm.ebitda_margin_pct,1,'%')},
+        oi:    {s:cm.other_income_score??0, hasData:cm.other_income_score!=null, label:'Other Income/EBIT', val:sigPipeFmt(cm.other_income_pct_ebit,1,'%')},
+        exc:   {s:cm.exceptional_items_score??0, hasData:cm.exceptional_items_score!=null, label:'Exceptional Items', val:sigPipeFmt(cm.exceptional_items_pct_pbt,1,'% of PBT')},
+        ar:    {s:cm.receivables_score??0, hasData:cm.receivables_score!=null, label:'Receivables vs Rev', val:cm.receivables_divergence_pp!=null?sigPipeFmt(cm.receivables_divergence_pp,1,'pp'):'N/A'},
     };
 }
 
@@ -1624,6 +1630,9 @@ function sigTechnicalSub(cm) {
         ath:  {s:cm.ath_score??0,         hasData:cm.ath_score!=null,         label:'ATH Distance',  val:sigPipeFmt(cm.ath_distance_pct,1,'%')},
         mom:  {s:cm.momentum_score??0,    hasData:cm.momentum_score!=null,    label:'3M Momentum',   val:sigPipeFmt(cm.return_3m_pct,1,'%')},
         rsi:  {s:cm.rsi_score??0,         hasData:cm.rsi_score!=null,         label:'RSI (14)',      val:cm.rsi_14!=null?cm.rsi_14.toFixed(1):'N/A'},
+        beta: {s:cm.beta_score??0,        hasData:cm.beta_score!=null,        label:'Beta',          val:cm.beta!=null?'β '+cm.beta.toFixed(2):'N/A'},
+        vol:  {s:cm.volume_score??0,      hasData:cm.volume_score!=null,      label:'Volume Surge',  val:cm.volume_ratio!=null?cm.volume_ratio.toFixed(1)+'x avg':'N/A'},
+        rel:  {s:cm.relative_strength_score??0, hasData:cm.relative_strength_score!=null, label:'vs Index (52W)', val:cm.relative_strength_pp!=null?sigPipeFmt(cm.relative_strength_pp,1,'pp'):'N/A'},
     };
 }
 
@@ -1634,7 +1643,7 @@ function sigValuationSub(cm) {
         pec:  {s:cm.pe_compression_score??0, hasData:cm.pe_compression_score!=null, label:'PE Compression', val:sigPipeFmt(cm.pe_compression_pct,1,'%')},
         pb:   {s:cm.pb_score??0,             hasData:cm.pb_score!=null,             label:'P/B',           val:cm.pb_ratio!=null?cm.pb_ratio.toFixed(2)+'x':'N/A'},
         ev:   {s:cm.ev_ebitda_score??0,      hasData:cm.ev_ebitda_score!=null,      label:'EV/EBITDA',     val:cm.ev_ebitda_ratio!=null?cm.ev_ebitda_ratio.toFixed(1)+'x':'N/A'},
-        ps:   {s:cm.ps_score??0,             hasData:cm.ps_score!=null,             label:'P/S',           val:cm.ps_ratio!=null?cm.ps_ratio.toFixed(2)+'x':'N/A'},
+        ps:   {s:cm.ps_score??0,             hasData:cm.ps_score!=null,             label:'EV/Rev (P/S)', val:cm.ps_ratio!=null?cm.ps_ratio.toFixed(2)+'x':'N/A'},
     };
 }
 
@@ -1642,9 +1651,16 @@ function sigValuationSub(cm) {
 function sigSentimentSub(cm) {
     return {
         analyst: {s:cm.analyst_component??0, hasData:cm.analyst_component!=null, label:'Analyst Rating', val:sigPipeFmt(cm.analyst_upside_pct,1,'% upside')},
+        agree:   {s:cm.analyst_agreement_score??0, hasData:cm.analyst_agreement_score!=null, label:'Analyst Agreement', val:cm.analyst_target_spread_pct!=null?cm.analyst_target_spread_pct.toFixed(0)+'% spread':'N/A'},
         own:     {s:cm.ownership_score??0,   hasData:cm.ownership_score!=null,   label:'Ownership Flows',
                   val:(cm.promoter_chg_qoq_pp!=null||cm.institutional_chg_qoq_pp!=null)
                       ?`P${sigPipeFmt(cm.promoter_chg_qoq_pp,2,'')} I${sigPipeFmt(cm.institutional_chg_qoq_pp,2,'')}`:'N/A'},
+        inst:    {s:cm.institutional_holding_score??0, hasData:cm.institutional_holding_score!=null, label:'Institutional Hold', val:sigPipeFmt(cm.institutional_holding_pct,1,'%')},
+        insider: {s:cm.insider_holding_score??0, hasData:cm.insider_holding_score!=null, label:'Insider Hold', val:sigPipeFmt(cm.insider_holding_pct,1,'%')},
+        shr:     {s:cm.shareholder_growth_score??0, hasData:cm.shareholder_growth_score!=null, label:'Shareholder Growth', val:sigPipeFmt(cm.shareholder_growth_qoq_pct,1,'%')},
+        aiq:     {s:cm.ai_qualitative_score??0, hasData:cm.ai_qualitative_score!=null, label:'AI Qualitative',
+                  val:cm.ai_qualitative_dims_used!=null?cm.ai_qualitative_dims_used+' dims':'N/A'},
+        mgmt:    {s:cm.management_confidence_score??0, hasData:cm.management_confidence_score!=null, label:'Mgmt Confidence', val:''},
     };
 }
 
