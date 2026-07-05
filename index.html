@@ -1572,7 +1572,7 @@ function sigScoreColor(s) {
     return s>=65?'#00ff88':s>=55?'#69f0ae':s>=46?'#ffea00':s>=37?'#ff9100':'#ff4d6d';
 }
 function sigRating(s) {
-    return s>=65?'STRONG BUY':s>=55?'BUY':s>=46?'NEUTRAL':s>=37?'REDUCE':'SELL';
+    return s>=73?'STRONG BUY':s>=67?'BUY':s>=55?'HOLD':s>=48?'SELL':'STRONG SELL';
 }
 
 // ---------- SECTOR MEDIANS ----------
@@ -1643,6 +1643,7 @@ function sigValuationSub(cm) {
     return {
         pe:   {s:cm.pe_score??0,             hasData:cm.pe_score!=null,             label:'P/E',           val:cm.pe_ratio!=null?cm.pe_ratio.toFixed(1)+'x':(cm.pe_loss_maker?'Loss-maker':'N/A')},
         pec:  {s:cm.pe_compression_score??0, hasData:cm.pe_compression_score!=null, label:'PE Compression', val:sigPipeFmt(cm.pe_compression_pct,1,'%')},
+        pefw: {s:cm.pe_forward_score??0,     hasData:cm.pe_forward_score!=null,     label:'PE (Fwd)',      val:cm.pe_forward_ratio!=null?cm.pe_forward_ratio.toFixed(1)+'x':'N/A'},
         pb:   {s:cm.pb_score??0,             hasData:cm.pb_score!=null,             label:'P/B',           val:cm.pb_ratio!=null?cm.pb_ratio.toFixed(2)+'x':'N/A'},
         ev:   {s:cm.ev_ebitda_score??0,      hasData:cm.ev_ebitda_score!=null,      label:'EV/EBITDA',     val:cm.ev_ebitda_ratio!=null?cm.ev_ebitda_ratio.toFixed(1)+'x':'N/A'},
         ps:   {s:cm.ps_score??0,             hasData:cm.ps_score!=null,             label:'EV/Rev (P/S)', val:cm.ps_ratio!=null?cm.ps_ratio.toFixed(2)+'x':'N/A'},
@@ -1663,6 +1664,8 @@ function sigSentimentSub(cm) {
         aiq:     {s:cm.ai_qualitative_score??0, hasData:cm.ai_qualitative_score!=null, label:'AI Qualitative',
                   val:cm.ai_qualitative_dims_used!=null?cm.ai_qualitative_dims_used+' dims':'N/A'},
         mgmt:    {s:cm.management_confidence_score??0, hasData:cm.management_confidence_score!=null, label:'Mgmt Confidence', val:''},
+        tone:    {s:cm.management_tone_score??0, hasData:cm.management_tone_score!=null, label:'Mgmt Tone', val:''},
+        airec:   {s:cm.ai_recommendation_score??0, hasData:cm.ai_recommendation_score!=null, label:'AI Recommendation', val:cm.ai_recommendation||''},
     };
 }
 
@@ -2343,7 +2346,7 @@ function buildSectorStats() {
         F: avg(d.F), T: avg(d.T), V: avg(d.V), S: avg(d.S),
         ratings: d.ratings,
         buyCount: (d.ratings['STRONG BUY']||0)+(d.ratings['BUY']||0),
-        sellCount: (d.ratings['REDUCE']||0)+(d.ratings['SELL']||0),
+        sellCount: (d.ratings['SELL']||0)+(d.ratings['STRONG SELL']||0),
     }));
 }
 
@@ -2393,13 +2396,13 @@ function renderSectorTab() {
 
         // Rating distribution dots
         const buy = s.ratings['STRONG BUY']||0, obuy = s.ratings['BUY']||0;
-        const hold = s.ratings['NEUTRAL']||0;
-        const red = (s.ratings['REDUCE']||0)+(s.ratings['SELL']||0);
+        const hold = s.ratings['HOLD']||0;
+        const red = (s.ratings['SELL']||0)+(s.ratings['STRONG SELL']||0);
         const dotBar = `<div style="display:flex;height:5px;border-radius:3px;overflow:hidden;gap:1px;margin-top:4px">
             ${buy>0?`<div style="flex:${buy};background:#00ff88" title="Strong Buy: ${buy}"></div>`:''}
             ${obuy>0?`<div style="flex:${obuy};background:#69f0ae" title="Buy: ${obuy}"></div>`:''}
-            ${hold>0?`<div style="flex:${hold};background:#ffea00" title="Neutral: ${hold}"></div>`:''}
-            ${red>0?`<div style="flex:${red};background:#ff4d6d" title="Sell/Reduce: ${red}"></div>`:''}
+            ${hold>0?`<div style="flex:${hold};background:#ffea00" title="Hold: ${hold}"></div>`:''}
+            ${red>0?`<div style="flex:${red};background:#ff4d6d" title="Sell/Strong Sell: ${red}"></div>`:''}
         </div>`;
 
         // Top ticker in sector by signal
@@ -3206,12 +3209,15 @@ const CMP_GROUPS = [
         metrics: [
             { label:'PE (TTM)',    fn: s=>_qN(s.valuation?.pe?.pe_ttm), unit:'x', hi:false },
             { label:'PE (Fwd)',    fn: s=>_qN(s.valuation?.pe?.pe_forward),  unit:'x', hi:false },
+            { label:'PE Compression%', fn: s=>{ const cm=s.derived_metrics?.calculated_metrics; return cm?_qN(cm.pe_compression_pct):null; }, unit:'%', hi:true },
             { label:'P/B',         fn: s=>_qN(s.valuation?.pe?.price_to_book), unit:'x', hi:false },
             { label:'EV/EBITDA',   fn: s=>_qN(s.valuation?.pe?.ev_to_ebitda), unit:'x', hi:false },
             { label:'EV/Revenue',  fn: s=>_qN(s.valuation?.pe?.ev_to_revenue), unit:'x', hi:false },
+            { label:'P/S',         fn: s=>_qN(s.valuation?.pe?.price_to_sales), unit:'x', hi:false },
             { label:'EPS (TTM)',   fn: s=>_qN(s.valuation?.eps?.eps_ttm), unit:'₹', hi:true },
             { label:'EPS (Fwd)',   fn: s=>_qN(s.valuation?.eps?.eps_forward), unit:'₹', hi:true },
-            { label:'Mkt Cap',     fn: s=>_qN(s.valuation?.market_cap), unit:'₹', hi:false, fmt:'cr' },
+            { label:'EPS CAGR 3Y%',fn: s=>{ const cm=s.derived_metrics?.calculated_metrics; return cm?_qN(cm.eps_cagr_3y_pct):null; }, unit:'%', hi:true },
+            { label:'Mkt Cap',     fn: s=>{ const v=_qN(s.valuation?.market?.market_cap); return v!=null?v/1e7:null; }, unit:'₹', hi:false, fmt:'cr' },
         ]
     },
     {
@@ -3233,7 +3239,6 @@ const CMP_GROUPS = [
             { label:'Net Profit ₹Cr', fn: s=>_qLD(s.financials?.net_profit?.consolidated?.annual)||_qLD(s.financials?.net_profit?.standalone?.annual), unit:'Cr', hi:true, fmt:'cr' },
             { label:'CFO ₹Cr',        fn: s=>_qLD(s.financials?.operating_cash_flow?.consolidated?.annual)||_qLD(s.financials?.operating_cash_flow?.standalone?.annual), unit:'Cr', hi:true, fmt:'cr' },
             { label:'FCF ₹Cr',        fn: s=>_qLD(s.financials?.fcf?.consolidated?.annual)||_qLD(s.financials?.fcf?.standalone?.annual), unit:'Cr', hi:true, fmt:'cr' },
-            { label:'EPS ₹',          fn: s=>_qLD(s.financials?.EPS_Rs?.consolidated?.annual)||_qLD(s.financials?.EPS_Rs?.standalone?.annual), unit:'₹', hi:true },
             { label:'Sales CAGR 3Y%', fn: s=>{
                 const d=s.financials?.revenue?.consolidated?.annual||s.financials?.revenue?.standalone?.annual||{};
                 const k=Object.keys(d).sort(); if(k.length<4) return null;
@@ -3251,13 +3256,18 @@ const CMP_GROUPS = [
     {
         title: 'Balance Sheet & Efficiency',
         metrics: [
-            { label:'D/E Ratio',       fn: s=>_qN(s.ratios?.ttm?.debt_to_equity_ratio), unit:'x', hi:false },
+            { label:'D/E Ratio',       fn: s=>{ const cm=s.derived_metrics?.calculated_metrics; return cm?_qN(cm.debt_to_equity):null; }, unit:'x', hi:false },
             { label:'Current Ratio',   fn: s=>_qN(s.ratios?.ttm?.current_ratio), unit:'x', hi:true },
             { label:'Quick Ratio',     fn: s=>_qN(s.ratios?.ttm?.quick_ratio), unit:'x', hi:true },
+            { label:'Net Cash/MCap%',  fn: s=>{ const cm=s.derived_metrics?.calculated_metrics; return cm?_qN(cm.net_cash_pct_mcap):null; }, unit:'%', hi:true },
+            { label:'Dilution YoY%',   fn: s=>{ const cm=s.derived_metrics?.calculated_metrics; return cm?_qN(cm.dilution_yoy_pct):null; }, unit:'%', hi:false },
+            { label:'Other Income/EBIT%', fn: s=>{ const cm=s.derived_metrics?.calculated_metrics; return cm?_qN(cm.other_income_pct_ebit):null; }, unit:'%', hi:false },
+            { label:'Exceptional/PBT%', fn: s=>{ const cm=s.derived_metrics?.calculated_metrics; return cm?_qN(cm.exceptional_items_pct_pbt):null; }, unit:'%', hi:false },
             { label:'Debtor Days',     fn: s=>_qLD(s.ratios?.screener?.debtor_days), unit:'d', hi:false },
             { label:'Inventory Days',  fn: s=>_qLD(s.ratios?.screener?.inventory_days), unit:'d', hi:false },
             { label:'Cash Conv Cycle', fn: s=>_qLD(s.ratios?.screener?.cash_conversion_cycle), unit:'d', hi:false },
-            { label:'Working Cap Days',fn: s=>_qLD(s.ratios?.Working_Capital_Days), unit:'d', hi:false },
+            { label:'CCC Trend (d)',   fn: s=>{ const cm=s.derived_metrics?.calculated_metrics; return cm?_qN(cm.ccc_trend_days):null; }, unit:'d', hi:false },
+            { label:'Working Cap Days',fn: s=>_qLD(s.ratios?.screener?.working_capital_days), unit:'d', hi:false },
         ]
     },
     {
@@ -3269,6 +3279,11 @@ const CMP_GROUPS = [
             { label:'52W Change%',     fn: s=>_qN(s.price?.['52_week']?.change_pct)||0, unit:'%', hi:true },
             { label:'52W High',        fn: s=>_qN(s.price?.['52_week']?.high), unit:'₹', hi:false },
             { label:'52W Low',         fn: s=>_qN(s.price?.['52_week']?.low), unit:'₹', hi:false },
+            { label:'ATH Distance%',   fn: s=>{ const cm=s.derived_metrics?.calculated_metrics; return cm?_qN(cm.ath_distance_pct):null; }, unit:'%', hi:true },
+            { label:'3M Return%',      fn: s=>{ const cm=s.derived_metrics?.calculated_metrics; return cm?_qN(cm.return_3m_pct):null; }, unit:'%', hi:true },
+            { label:'RSI (14)',        fn: s=>{ const cm=s.derived_metrics?.calculated_metrics; return cm?_qN(cm.rsi_14):null; }, unit:'', hi:false },
+            { label:'Volume Ratio',    fn: s=>{ const cm=s.derived_metrics?.calculated_metrics; return cm?_qN(cm.volume_ratio):null; }, unit:'x', hi:false },
+            { label:'vs Index 52W(pp)',fn: s=>{ const cm=s.derived_metrics?.calculated_metrics; return cm?_qN(cm.relative_strength_pp):null; }, unit:'pp', hi:true },
             { label:'Beta',            fn: s=>_qN(s.price?.ltp?.beta), unit:'', hi:false },
         ]
     },
@@ -3277,11 +3292,12 @@ const CMP_GROUPS = [
         metrics: [
             { label:'Target Price',    fn: s=>_qN(s.websignals?.target_mean), unit:'₹', hi:true },
             { label:'Upside%',         fn: s=>{const c=_qN(s.price?.close_price||s.price?.ltp?.price),t=_qN(s.websignals?.target_mean);return c&&t?(t-c)/c*100:null;}, unit:'%', hi:true },
+            { label:'Target Spread%',  fn: s=>{ const cm=s.derived_metrics?.calculated_metrics; return cm?_qN(cm.analyst_target_spread_pct):null; }, unit:'%', hi:false },
             { label:'# Analysts',      fn: s=>_qN(s.websignals?.analyst_count), unit:'', hi:true },
             { label:'Rec Mean (1=SB)', fn: s=>_qN(s.websignals?.analyst_rating_score), unit:'', hi:false },
             { label:'Gov Risk (1-10)', fn: s=>_qN(s.websignals?.governance_overall_risk), unit:'', hi:false },
-            { label:'Audit Risk',      fn: s=>_qN(s.websignals?.audit_risk), unit:'', hi:false },
-            { label:'Board Risk',      fn: s=>_qN(s.websignals?.board_risk), unit:'', hi:false },
+            { label:'Audit Risk',      fn: s=>_qN(s.websignals?.governance_audit_risk), unit:'', hi:false },
+            { label:'Board Risk',      fn: s=>_qN(s.websignals?.governance_board_risk), unit:'', hi:false },
         ]
     },
     {
@@ -3302,6 +3318,18 @@ const CMP_GROUPS = [
               }, unit:'pp', hi:true },
             { label:'DII%',            fn: s=>_qLD(s.company_details?.shareholding?.pattern?.diis), unit:'%', hi:true },
             { label:'# Shareholders',  fn: s=>_qLD(s.company_details?.shareholding?.pattern?.no_of_shareholders), unit:'', hi:true, fmt:'k' },
+            { label:'Shareholder Δ QoQ%', fn: s=>{ const cm=s.derived_metrics?.calculated_metrics; return cm?_qN(cm.shareholder_growth_qoq_pct):null; }, unit:'%', hi:true },
+            { label:'Institutional Hold%', fn: s=>{const v=_qN(s.company_details?.shareholding?.ownership?.institutional_holding_pct); return v!=null?v*100:null;}, unit:'%', hi:true },
+            { label:'Insider Hold%',   fn: s=>{const v=_qN(s.company_details?.shareholding?.ownership?.insider_holding_pct); return v!=null?v*100:null;}, unit:'%', hi:true },
+        ]
+    },
+    {
+        title: 'AI Insights',
+        metrics: [
+            { label:'AI Qualitative',  fn: s=>{ const cm=s.derived_metrics?.calculated_metrics; return cm?_qN(cm.ai_qualitative_score):null; }, unit:'', hi:true },
+            { label:'Mgmt Confidence', fn: s=>{ const cm=s.derived_metrics?.calculated_metrics; return cm?_qN(cm.management_confidence_score):null; }, unit:'', hi:true },
+            { label:'Mgmt Tone',       fn: s=>{ const cm=s.derived_metrics?.calculated_metrics; return cm?_qN(cm.management_tone_score):null; }, unit:'', hi:true },
+            { label:'AI Recommendation',fn: s=>{ const cm=s.derived_metrics?.calculated_metrics; return cm?_qN(cm.ai_recommendation_score):null; }, unit:'', hi:true },
         ]
     },
     {
