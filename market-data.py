@@ -614,59 +614,63 @@ SECTOR_PROFILES = {
     # Keys match unified-symbols.json sector field exactly
     # margin_good: net margin % considered strong for the sector
     # pe_fair / pb_fair: typical fair-value multiples for the sector (India)
+    # roa_excellent: ROA % considered excellent — kept separate from
+    # roe_excellent since ROA strips out leverage; leveraged sectors
+    # (Financials, Utilities, Telecom) have structurally low ROA even
+    # when ROE looks great, which is exactly the point of scoring it.
     "Information Technology": {
         "fundamental": 0.4, "technical": 0.3, "valuation": 0.2, "sentiment": 0.1,
-        "de_limit": 0.5,  "roe_excellent": 22, "roce_excellent": 25,
+        "de_limit": 0.5,  "roe_excellent": 22, "roce_excellent": 25, "roa_excellent": 18,
         "margin_good": 16, "pe_fair": 26, "pb_fair": 7.0,
     },
     "Financials": {
         "fundamental": 0.5, "technical": 0.2, "valuation": 0.2, "sentiment": 0.1,
-        "de_limit": 8.0,  "roe_excellent": 15, "roce_excellent": 12,
+        "de_limit": 8.0,  "roe_excellent": 15, "roce_excellent": 12, "roa_excellent": 2,
         "margin_good": 18, "pe_fair": 15, "pb_fair": 2.5,
     },
     "Consumer Staples": {
         "fundamental": 0.4, "technical": 0.2, "valuation": 0.3, "sentiment": 0.1,
-        "de_limit": 1.0,  "roe_excellent": 25, "roce_excellent": 20,
+        "de_limit": 1.0,  "roe_excellent": 25, "roce_excellent": 20, "roa_excellent": 15,
         "margin_good": 12, "pe_fair": 45, "pb_fair": 10.0,
     },
     "Consumer Discretionary": {
         "fundamental": 0.4, "technical": 0.25, "valuation": 0.25, "sentiment": 0.1,
-        "de_limit": 1.5,  "roe_excellent": 18, "roce_excellent": 15,
+        "de_limit": 1.5,  "roe_excellent": 18, "roce_excellent": 15, "roa_excellent": 10,
         "margin_good": 8,  "pe_fair": 40, "pb_fair": 6.0,
     },
     "Healthcare": {
         "fundamental": 0.4, "technical": 0.2, "valuation": 0.3, "sentiment": 0.1,
-        "de_limit": 1.5,  "roe_excellent": 20, "roce_excellent": 18,
+        "de_limit": 1.5,  "roe_excellent": 20, "roce_excellent": 18, "roa_excellent": 12,
         "margin_good": 14, "pe_fair": 32, "pb_fair": 5.0,
     },
     "Industrials": {
         "fundamental": 0.5, "technical": 0.2, "valuation": 0.2, "sentiment": 0.1,
-        "de_limit": 2.0,  "roe_excellent": 18, "roce_excellent": 20,
+        "de_limit": 2.0,  "roe_excellent": 18, "roce_excellent": 20, "roa_excellent": 8,
         "margin_good": 8,  "pe_fair": 32, "pb_fair": 5.0,
     },
     "Defence": {
         "fundamental": 0.5, "technical": 0.2, "valuation": 0.2, "sentiment": 0.1,
-        "de_limit": 1.0,  "roe_excellent": 18, "roce_excellent": 20,
+        "de_limit": 1.0,  "roe_excellent": 18, "roce_excellent": 20, "roa_excellent": 8,
         "margin_good": 12, "pe_fair": 38, "pb_fair": 8.0,
     },
     "Energy": {
         "fundamental": 0.5, "technical": 0.3, "valuation": 0.1, "sentiment": 0.1,
-        "de_limit": 2.5,  "roe_excellent": 14, "roce_excellent": 12,
+        "de_limit": 2.5,  "roe_excellent": 14, "roce_excellent": 12, "roa_excellent": 6,
         "margin_good": 8,  "pe_fair": 13, "pb_fair": 1.8,
     },
     "Utilities": {
         "fundamental": 0.5, "technical": 0.2, "valuation": 0.2, "sentiment": 0.1,
-        "de_limit": 3.0,  "roe_excellent": 12, "roce_excellent": 10,
+        "de_limit": 3.0,  "roe_excellent": 12, "roce_excellent": 10, "roa_excellent": 4,
         "margin_good": 12, "pe_fair": 16, "pb_fair": 2.2,
     },
     "Materials": {
         "fundamental": 0.5, "technical": 0.3, "valuation": 0.1, "sentiment": 0.1,
-        "de_limit": 2.5,  "roe_excellent": 16, "roce_excellent": 14,
+        "de_limit": 2.5,  "roe_excellent": 16, "roce_excellent": 14, "roa_excellent": 7,
         "margin_good": 10, "pe_fair": 18, "pb_fair": 2.8,
     },
     "Telecom": {
         "fundamental": 0.5, "technical": 0.2, "valuation": 0.2, "sentiment": 0.1,
-        "de_limit": 3.0,  "roe_excellent": 10, "roce_excellent": 8,
+        "de_limit": 3.0,  "roe_excellent": 10, "roce_excellent": 8, "roa_excellent": 5,
         "margin_good": 10, "pe_fair": 28, "pb_fair": 4.5,
     },
     "Real Estate": {
@@ -674,13 +678,13 @@ SECTOR_PROFILES = {
         # Starter values only — currently backs a single symbol (WEWORK, flexible
         # workspace/co-working). Revisit once more Real Estate names are added.
         "fundamental": 0.4, "technical": 0.2, "valuation": 0.3, "sentiment": 0.1,
-        "de_limit": 3.0,  "roe_excellent": 12, "roce_excellent": 10,
+        "de_limit": 3.0,  "roe_excellent": 12, "roce_excellent": 10, "roa_excellent": 5,
         "margin_good": 8,  "pe_fair": 35, "pb_fair": 3.0,
     },
     # Fallback
     "Other": {
         "fundamental": 0.5, "technical": 0.2, "valuation": 0.2, "sentiment": 0.1,
-        "de_limit": 2.0,  "roe_excellent": 15, "roce_excellent": 15,
+        "de_limit": 2.0,  "roe_excellent": 15, "roce_excellent": 15, "roa_excellent": 8,
         "margin_good": 10, "pe_fair": 22, "pb_fair": 3.5,
     },
 }
@@ -1639,6 +1643,20 @@ def compute_derived_metrics(bucketed: dict, sector: str = None) -> dict:
         metrics['roe_score'] = roe_score
         fundamental_components.append(roe_score)
 
+    # ROA — deliberately separate from ROE. ROE can be inflated purely by
+    # leverage (a highly-levered bank can show a great ROE on mediocre
+    # asset profitability); ROA strips that out. Most valuable exactly
+    # where leverage varies a lot, i.e. Financials.
+    roa = rat.get('ttm', {}).get('roa_pct')
+    if isinstance(roa, (int, float)):
+        roa_pct = roa * 100
+        metrics['roa_pct'] = round(roa_pct, 2)
+        t = sector_profile.get('roa_excellent', 8)
+        roa_score = interp_score(roa_pct, [(-5, 5), (0, 25), (t * 0.5, 55),
+                                           (t, 85), (t * 1.6, 100)])
+        metrics['roa_score'] = roa_score
+        fundamental_components.append(roa_score)
+
     # Net margin (TTM) — sector-aware via margin_good
     net_margin = rat.get('ttm', {}).get('net_margin_pct')
     if isinstance(net_margin, float):
@@ -1660,6 +1678,32 @@ def compute_derived_metrics(bucketed: dict, sector: str = None) -> dict:
         metrics['growth_score'] = growth_score
         fundamental_components.append(growth_score)
 
+    # Revenue growth YoY (TTM) — deliberately separate from earnings growth.
+    # A company can show strong earnings growth off margin expansion or a
+    # low base while revenue is flat; revenue growth catches that gap.
+    revenue_growth = rat.get('ttm', {}).get('revenue_growth')
+    if isinstance(revenue_growth, float):
+        rg_pct = revenue_growth * 100
+        metrics['revenue_growth_yoy'] = round(rg_pct, 2)
+        revenue_growth_score = interp_score(rg_pct, [(-30, 10), (-10, 30), (0, 45),
+                                                      (10, 65), (25, 85), (50, 100)])
+        metrics['revenue_growth_score'] = revenue_growth_score
+        fundamental_components.append(revenue_growth_score)
+
+    # Earnings growth QoQ (sequential quarter, TTM) — complements the
+    # existing qtr_profit_yoy_pct (latest quarter vs same quarter last
+    # year) with a near-term sequential read. Noisier (seasonality), so
+    # scored on the same scale rather than a tighter one — averaging with
+    # the other fundamental components already smooths single-metric noise.
+    earnings_growth_qoq = rat.get('ttm', {}).get('earnings_growth_qoq')
+    if isinstance(earnings_growth_qoq, float):
+        qoq_pct = earnings_growth_qoq * 100
+        metrics['earnings_growth_qoq'] = round(qoq_pct, 2)
+        qoq_growth_score = interp_score(qoq_pct, [(-30, 10), (-10, 30), (0, 45),
+                                                   (10, 65), (25, 85), (50, 100)])
+        metrics['earnings_growth_qoq_score'] = qoq_growth_score
+        fundamental_components.append(qoq_growth_score)
+
     # D/E (sector-aware, continuous; lower is better)
     borr      = latest_annual('borrowings')
     reserves  = latest_annual('reserves')
@@ -1673,6 +1717,38 @@ def compute_derived_metrics(bucketed: dict, sector: str = None) -> dict:
                                      (lim, 55), (lim * 2, 25)])
         metrics['de_score'] = de_score
         fundamental_components.append(de_score)
+
+    # Liquidity: current ratio (TTM) — same sector exclusion as cash quality
+    # below. "Current assets/liabilities" doesn't map onto solvency risk for
+    # a bank/NBFC the way it does for a normal operating business, so this
+    # is skipped for Financials. Scored as a hump, not monotonic — too low
+    # is a real solvency risk, but very high often just means idle working
+    # capital rather than being "better".
+    if sector != 'Financials':
+        current_ratio = rat.get('ttm', {}).get('current_ratio')
+        if isinstance(current_ratio, (int, float)):
+            metrics['current_ratio'] = round(current_ratio, 2)
+            liquidity_score = interp_score(current_ratio, [(0.5, 15), (1.0, 40), (1.5, 70),
+                                                            (2.5, 90), (5, 80), (10, 50)])
+            metrics['liquidity_score'] = liquidity_score
+            fundamental_components.append(liquidity_score)
+
+    # Share dilution (YoY change in shares outstanding) — catches cases
+    # where "earnings growth" is partly/wholly diluted away by new share
+    # issuance, which the earnings-growth metrics above can't see since
+    # they're not on a per-share basis. Buybacks (negative dilution) score
+    # well; heavy dilution scores poorly. Continuous, not a hard cutoff.
+    shares_hist = val.get('history', {}).get('shares_outstanding', {})
+    if isinstance(shares_hist, dict) and len(shares_hist) >= 2:
+        yrs = sorted(shares_hist.items(), reverse=True)
+        latest_shares, prior_shares = yrs[0][1], yrs[1][1]
+        if isinstance(latest_shares, (int, float)) and isinstance(prior_shares, (int, float)) and prior_shares > 0:
+            dilution_pct = (latest_shares - prior_shares) / prior_shares * 100
+            metrics['dilution_yoy_pct'] = round(dilution_pct, 2)
+            dilution_score = interp_score(dilution_pct, [(-10, 90), (0, 65), (2, 50),
+                                                          (5, 35), (10, 20), (20, 10)])
+            metrics['dilution_score'] = dilution_score
+            fundamental_components.append(dilution_score)
 
     # Cash quality: CFO/PAT computed from primary data (operating_cash_flow /
     # net_profit), aggregated over up to 3 latest years to smooth working-capital
