@@ -38,6 +38,7 @@ Buckets (8 consolidated)
 
 import json
 import sys
+import math
 import logging
 from pathlib import Path
 from copy import deepcopy
@@ -3406,6 +3407,27 @@ def _audit(output: dict, log) -> bool:
     return len(failures) == 0
 
 
+def sanitize_for_json(obj):
+    """Recursively replace inf/-inf/NaN with None throughout a structure.
+
+    Root-cause fix for cases like VAML's pe_ttm coming back as literal
+    Infinity from Yahoo (trailingPE overflows when trailing EPS is ~0) —
+    Python's json.dump happily writes that as the non-standard `Infinity`
+    token, which then makes any standards-compliant JSON.parse() in a
+    browser throw and fail the whole page's data load, not just one field.
+    Applied to the whole final output rather than just pe_ttm, since any
+    Yahoo-sourced ratio with a near-zero denominator is vulnerable to the
+    same failure mode, not just PE.
+    """
+    if isinstance(obj, float):
+        return None if (math.isinf(obj) or math.isnan(obj)) else obj
+    if isinstance(obj, dict):
+        return {k: sanitize_for_json(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [sanitize_for_json(v) for v in obj]
+    return obj
+
+
 def main():
     if not INPUT_FILE.exists():
         logger.error(f"INPUT FILE NOT FOUND: {INPUT_FILE}")
@@ -3673,9 +3695,10 @@ def main():
     
     # Add all ticker data
     final_output.update(output)
-    
+    final_output = sanitize_for_json(final_output)
+
     with open(OUTPUT_FILE, "w") as f:
-        json.dump(final_output, f, indent=2, default=str)
+        json.dump(final_output, f, indent=2, default=str, allow_nan=False)
 
     size_kb = OUTPUT_FILE.stat().st_size / 1024
     logger.info(f"✓ DONE. {total} symbols → {OUTPUT_FILE} ({size_kb:.1f} KB)")
