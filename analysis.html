@@ -1688,6 +1688,21 @@ function drawNavLine(s){
     ctx.setTransform(dpr,0,0,dpr,0,0);
     ctx.imageSmoothingEnabled = false;
 
+    // Tap/click tooltip — same wiring as drawCandlestick so taps work on the
+    // NAV chart too (previously only drawCandlestick attached these).
+    cv.onclick = (e) => handleChartClick(e, cv, cv._W2||W2, cv._H2||H2);
+    cv._W2 = W2; cv._H2 = H2;
+    if(!cv._tb){
+      cv._tb = true;
+      cv.addEventListener('touchend', (e) => {
+        if(e.touches.length===0 && !chartInteraction.isPanning){
+          const touch = e.changedTouches[0];
+          handleChartClick(new MouseEvent('click',{clientX:touch.clientX,clientY:touch.clientY}), cv, cv._W2||320, cv._H2||200);
+        }
+      }, {passive:true});
+    }
+
+    const activeInterval = S.navInterval || resolveNavInterval(s);
     const pts = getSlicedNavPoints(s, W2);
     if(!pts.length){
       ctx.fillStyle='#060c18'; ctx.fillRect(0,0,W2,H2);
@@ -1781,7 +1796,9 @@ function drawNavLine(s){
     ctx.beginPath();
     pts.forEach((p,i) => {
       const x = toX(p._t), y = toY(p.v);
-      candlestickBars.push({ date:p.d, close:p.v, x:x-2, y:y-2, w:4, h:4 }); // minimal hit-box for future tooltip reuse
+      if(activeInterval === 'D'){
+        candlestickBars.push({ date:p.d, close:p.v, x:x-4, y:y-8, w:8, h:16, isNav:true }); // taller hit-box since daily points sit close together
+      }
       i===0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
     });
     ctx.stroke();
@@ -2700,6 +2717,13 @@ function handleChartClick(e, canvas, W2, H2) {
     return;
   }
   window.candleTooltipBar = bar.date;
+  if(bar.isNav){
+    showTip('chart-tooltip','#00d4ff',
+      `<div style="color:#00d4ff;font-weight:bold;margin-bottom:6px">${bar.date}</div>
+       <div style="color:#aaa;font-size:11px">NAV: <span style="color:#fff;font-weight:bold">₹${bar.close.toFixed(2)}</span></div>`,
+      e.clientX, e.clientY);
+    return;
+  }
   const o=bar.open.toFixed(2), h=bar.high.toFixed(2), l=bar.low.toFixed(2), c=bar.close.toFixed(2);
   const chg = ((c-o)/o*100).toFixed(2);
   const chgColor = chg>=0 ? '#00ff88' : '#ff4466';
