@@ -1702,7 +1702,6 @@ function drawNavLine(s){
       }, {passive:true});
     }
 
-    const activeInterval = S.navInterval || resolveNavInterval(s);
     const pts = getSlicedNavPoints(s, W2);
     if(!pts.length){
       ctx.fillStyle='#060c18'; ctx.fillRect(0,0,W2,H2);
@@ -1796,19 +1795,19 @@ function drawNavLine(s){
     ctx.beginPath();
     pts.forEach((p,i) => {
       const x = toX(p._t), y = toY(p.v);
-      if(activeInterval === 'D'){
-        candlestickBars.push({ date:p.d, close:p.v, x:x-4, y:y-8, w:8, h:16, isNav:true }); // taller hit-box since daily points sit close together
-      }
+      candlestickBars.push({ date:p.d, close:p.v, x:x-4, y:y-8, w:8, h:16, isNav:true });
       i===0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
     });
     ctx.stroke();
 
-    // Dot on the last point
-    const lastX = toX(pts[n-1]._t), lastY = toY(pts[n-1].v);
+    // Dots at every data point (last point drawn slightly larger)
     ctx.fillStyle = lineCol;
-    ctx.beginPath();
-    ctx.arc(lastX, lastY, 3, 0, Math.PI*2);
-    ctx.fill();
+    pts.forEach((p,i) => {
+      const x = toX(p._t), y = toY(p.v);
+      ctx.beginPath();
+      ctx.arc(x, y, i===n-1 ? 3 : 2, 0, Math.PI*2);
+      ctx.fill();
+    });
 
     ctx.restore();
 
