@@ -1754,6 +1754,27 @@ def compute_derived_metrics(bucketed: dict, sector: str = None) -> dict:
         metrics['earnings_growth_qoq_score'] = qoq_growth_score
         fund_growth.append(qoq_growth_score)
 
+    # Multi-year EPS CAGR — more robust than the single-year YoY figures
+    # above, which can be skewed hard by one-off base effects in either
+    # direction (a low prior-year base inflates YoY%; a one-off bad year
+    # deflates it even against a strong underlying trend). Prefers diluted
+    # EPS for consistency with the dilution check elsewhere; falls back to
+    # basic EPS if diluted history isn't available.
+    eps_hist = val.get('history', {}).get('diluted_eps', {})
+    if not (isinstance(eps_hist, dict) and len(eps_hist) >= 4):
+        eps_hist = val.get('history', {}).get('basic_eps', {})
+    if isinstance(eps_hist, dict) and len(eps_hist) >= 4:
+        keys = sorted(eps_hist.keys(), reverse=True)
+        latest_eps, oldest_eps = eps_hist.get(keys[0]), eps_hist.get(keys[3])
+        if isinstance(latest_eps, (int, float)) and isinstance(oldest_eps, (int, float)) \
+                and latest_eps > 0 and oldest_eps > 0:
+            eps_cagr_pct = ((latest_eps / oldest_eps) ** (1 / 3) - 1) * 100
+            metrics['eps_cagr_3y_pct'] = round(eps_cagr_pct, 2)
+            eps_cagr_score = interp_score(eps_cagr_pct, [(-20, 15), (-5, 30), (0, 45),
+                                                          (10, 65), (25, 85), (50, 100)])
+            metrics['eps_cagr_score'] = eps_cagr_score
+            fund_growth.append(eps_cagr_score)
+
     # D/E (sector-aware, continuous; lower is better)
     borr      = latest_annual('borrowings')
     reserves  = latest_annual('reserves')
