@@ -626,12 +626,12 @@ SECTOR_PROFILES = {
     # revenue/expense, not a financing cost to add back), so EV/EBITDA is
     # skipped entirely for that sector, same as cash-conversion/liquidity.
     "Information Technology": {
-        "fundamental": 0.4, "technical": 0.3, "valuation": 0.2, "sentiment": 0.1,
+        "fundamental": 0.4, "technical": 0.25, "valuation": 0.25, "sentiment": 0.1,
         "de_limit": 0.5,  "roe_excellent": 22, "roce_excellent": 25, "roa_excellent": 18,
         "margin_good": 16, "pe_fair": 26, "pb_fair": 7.0, "ev_ebitda_fair": 18,
     },
     "Financials": {
-        "fundamental": 0.5, "technical": 0.2, "valuation": 0.2, "sentiment": 0.1,
+        "fundamental": 0.5, "technical": 0.15, "valuation": 0.25, "sentiment": 0.1,
         "de_limit": 8.0,  "roe_excellent": 15, "roce_excellent": 12, "roa_excellent": 2,
         "margin_good": 18, "pe_fair": 15, "pb_fair": 2.5,
     },
@@ -641,7 +641,7 @@ SECTOR_PROFILES = {
         "margin_good": 12, "pe_fair": 45, "pb_fair": 10.0, "ev_ebitda_fair": 16,
     },
     "Consumer Discretionary": {
-        "fundamental": 0.4, "technical": 0.25, "valuation": 0.25, "sentiment": 0.1,
+        "fundamental": 0.4, "technical": 0.2, "valuation": 0.3, "sentiment": 0.1,
         "de_limit": 1.5,  "roe_excellent": 18, "roce_excellent": 15, "roa_excellent": 10,
         "margin_good": 8,  "pe_fair": 40, "pb_fair": 6.0, "ev_ebitda_fair": 16,
     },
@@ -651,32 +651,32 @@ SECTOR_PROFILES = {
         "margin_good": 14, "pe_fair": 32, "pb_fair": 5.0, "ev_ebitda_fair": 18,
     },
     "Industrials": {
-        "fundamental": 0.5, "technical": 0.2, "valuation": 0.2, "sentiment": 0.1,
+        "fundamental": 0.5, "technical": 0.15, "valuation": 0.25, "sentiment": 0.1,
         "de_limit": 2.0,  "roe_excellent": 18, "roce_excellent": 20, "roa_excellent": 8,
         "margin_good": 8,  "pe_fair": 32, "pb_fair": 5.0, "ev_ebitda_fair": 14,
     },
     "Defence": {
-        "fundamental": 0.5, "technical": 0.2, "valuation": 0.2, "sentiment": 0.1,
+        "fundamental": 0.5, "technical": 0.15, "valuation": 0.25, "sentiment": 0.1,
         "de_limit": 1.0,  "roe_excellent": 18, "roce_excellent": 20, "roa_excellent": 8,
         "margin_good": 12, "pe_fair": 38, "pb_fair": 8.0, "ev_ebitda_fair": 20,
     },
     "Energy": {
-        "fundamental": 0.5, "technical": 0.3, "valuation": 0.1, "sentiment": 0.1,
+        "fundamental": 0.5, "technical": 0.2, "valuation": 0.2, "sentiment": 0.1,
         "de_limit": 2.5,  "roe_excellent": 14, "roce_excellent": 12, "roa_excellent": 6,
         "margin_good": 8,  "pe_fair": 13, "pb_fair": 1.8, "ev_ebitda_fair": 7,
     },
     "Utilities": {
-        "fundamental": 0.5, "technical": 0.2, "valuation": 0.2, "sentiment": 0.1,
+        "fundamental": 0.5, "technical": 0.15, "valuation": 0.25, "sentiment": 0.1,
         "de_limit": 3.0,  "roe_excellent": 12, "roce_excellent": 10, "roa_excellent": 4,
         "margin_good": 12, "pe_fair": 16, "pb_fair": 2.2, "ev_ebitda_fair": 9,
     },
     "Materials": {
-        "fundamental": 0.5, "technical": 0.3, "valuation": 0.1, "sentiment": 0.1,
+        "fundamental": 0.5, "technical": 0.2, "valuation": 0.2, "sentiment": 0.1,
         "de_limit": 2.5,  "roe_excellent": 16, "roce_excellent": 14, "roa_excellent": 7,
         "margin_good": 10, "pe_fair": 18, "pb_fair": 2.8, "ev_ebitda_fair": 8,
     },
     "Telecom": {
-        "fundamental": 0.5, "technical": 0.2, "valuation": 0.2, "sentiment": 0.1,
+        "fundamental": 0.5, "technical": 0.15, "valuation": 0.25, "sentiment": 0.1,
         "de_limit": 3.0,  "roe_excellent": 10, "roce_excellent": 8, "roa_excellent": 5,
         "margin_good": 10, "pe_fair": 28, "pb_fair": 4.5, "ev_ebitda_fair": 7,
     },
@@ -690,7 +690,7 @@ SECTOR_PROFILES = {
     },
     # Fallback
     "Other": {
-        "fundamental": 0.5, "technical": 0.2, "valuation": 0.2, "sentiment": 0.1,
+        "fundamental": 0.5, "technical": 0.15, "valuation": 0.25, "sentiment": 0.1,
         "de_limit": 2.0,  "roe_excellent": 15, "roce_excellent": 15, "roa_excellent": 8,
         "margin_good": 10, "pe_fair": 22, "pb_fair": 3.5, "ev_ebitda_fair": 12,
     },
@@ -1618,7 +1618,20 @@ def compute_derived_metrics(bucketed: dict, sector: str = None) -> dict:
         return points[-1][1]
 
     # ── 1. FUNDAMENTAL ────────────────────────────────────────────────────────
-    fundamental_components = []
+    # Grouped into 5 themes, equal-weighted at the theme level rather than
+    # flat-averaged across every sub-metric. Flat-averaging let themes with
+    # more measurable proxies (profitability has 5, capital allocation has 1)
+    # accidentally dominate the pillar just by having more entries — not a
+    # deliberate call that profitability matters 5x more than dividend policy.
+    # Each theme independently tolerates missing metrics (same renormalization
+    # philosophy as the pillar-level fundamental/technical/valuation/sentiment
+    # aggregation below); a theme with zero available metrics for this stock
+    # is dropped, and the remaining themes still average equally.
+    fund_profitability = []       # ROCE, ROE, ROA, net margin, OPM trend
+    fund_growth = []              # earnings YoY, revenue YoY, qtr YoY, qtr QoQ
+    fund_capital_structure = []   # D/E, liquidity, dilution
+    fund_cash_workcap = []        # cash conversion (CFO/PAT), CCC trend
+    fund_capital_allocation = []  # dividend yield
 
     # ROCE (Screener time-series) — primary efficiency metric. Continuous;
     # negative ROCE is penalised hard, headroom above "excellent" still scores.
@@ -1631,7 +1644,7 @@ def compute_derived_metrics(bucketed: dict, sector: str = None) -> dict:
             roce_score = interp_score(roce, [(-10, 5), (0, 25), (t * 0.5, 55),
                                              (t, 85), (t * 1.6, 100)])
             metrics['roce_score'] = roce_score
-            fundamental_components.append(roce_score)
+            fund_profitability.append(roce_score)
 
     # ROE (Screener for banks/NBFCs, Yahoo TTM for others)
     roe_data = rat.get('screener', {}).get('roe_pct', {})
@@ -1648,7 +1661,7 @@ def compute_derived_metrics(bucketed: dict, sector: str = None) -> dict:
         roe_score = interp_score(roe, [(-10, 5), (0, 25), (t * 0.5, 55),
                                        (t, 85), (t * 1.6, 100)])
         metrics['roe_score'] = roe_score
-        fundamental_components.append(roe_score)
+        fund_profitability.append(roe_score)
 
     # ROA — deliberately separate from ROE. ROE can be inflated purely by
     # leverage (a highly-levered bank can show a great ROE on mediocre
@@ -1662,7 +1675,7 @@ def compute_derived_metrics(bucketed: dict, sector: str = None) -> dict:
         roa_score = interp_score(roa_pct, [(-5, 5), (0, 25), (t * 0.5, 55),
                                            (t, 85), (t * 1.6, 100)])
         metrics['roa_score'] = roa_score
-        fundamental_components.append(roa_score)
+        fund_profitability.append(roa_score)
 
     # Net margin (TTM) — sector-aware via margin_good
     net_margin = rat.get('ttm', {}).get('net_margin_pct')
@@ -1673,7 +1686,7 @@ def compute_derived_metrics(bucketed: dict, sector: str = None) -> dict:
         margin_score = interp_score(nm_pct, [(-5, 5), (0, 25), (mg * 0.5, 55),
                                              (mg, 85), (mg * 1.75, 100)])
         metrics['margin_score'] = margin_score
-        fundamental_components.append(margin_score)
+        fund_profitability.append(margin_score)
 
     # Earnings growth YoY (TTM) — scored, not just stored
     rev_growth = rat.get('ttm', {}).get('earnings_growth_yoy')
@@ -1683,7 +1696,7 @@ def compute_derived_metrics(bucketed: dict, sector: str = None) -> dict:
         growth_score = interp_score(g_pct, [(-30, 10), (-10, 30), (0, 45),
                                             (10, 65), (25, 85), (50, 100)])
         metrics['growth_score'] = growth_score
-        fundamental_components.append(growth_score)
+        fund_growth.append(growth_score)
 
     # Revenue growth YoY (TTM) — deliberately separate from earnings growth.
     # A company can show strong earnings growth off margin expansion or a
@@ -1695,7 +1708,7 @@ def compute_derived_metrics(bucketed: dict, sector: str = None) -> dict:
         revenue_growth_score = interp_score(rg_pct, [(-30, 10), (-10, 30), (0, 45),
                                                       (10, 65), (25, 85), (50, 100)])
         metrics['revenue_growth_score'] = revenue_growth_score
-        fundamental_components.append(revenue_growth_score)
+        fund_growth.append(revenue_growth_score)
 
     # Earnings growth QoQ (sequential quarter, TTM) — complements the
     # existing qtr_profit_yoy_pct (latest quarter vs same quarter last
@@ -1709,7 +1722,7 @@ def compute_derived_metrics(bucketed: dict, sector: str = None) -> dict:
         qoq_growth_score = interp_score(qoq_pct, [(-30, 10), (-10, 30), (0, 45),
                                                    (10, 65), (25, 85), (50, 100)])
         metrics['earnings_growth_qoq_score'] = qoq_growth_score
-        fundamental_components.append(qoq_growth_score)
+        fund_growth.append(qoq_growth_score)
 
     # D/E (sector-aware, continuous; lower is better)
     borr      = latest_annual('borrowings')
@@ -1723,7 +1736,7 @@ def compute_derived_metrics(bucketed: dict, sector: str = None) -> dict:
         de_score = interp_score(de, [(0, 100), (lim * 0.5, 80),
                                      (lim, 55), (lim * 2, 25)])
         metrics['de_score'] = de_score
-        fundamental_components.append(de_score)
+        fund_capital_structure.append(de_score)
 
     # Liquidity: current ratio (TTM) — same sector exclusion as cash quality
     # below. "Current assets/liabilities" doesn't map onto solvency risk for
@@ -1738,7 +1751,7 @@ def compute_derived_metrics(bucketed: dict, sector: str = None) -> dict:
             liquidity_score = interp_score(current_ratio, [(0.5, 15), (1.0, 40), (1.5, 70),
                                                             (2.5, 90), (5, 80), (10, 50)])
             metrics['liquidity_score'] = liquidity_score
-            fundamental_components.append(liquidity_score)
+            fund_capital_structure.append(liquidity_score)
 
     # Share dilution (YoY change in shares outstanding) — catches cases
     # where "earnings growth" is partly/wholly diluted away by new share
@@ -1755,7 +1768,7 @@ def compute_derived_metrics(bucketed: dict, sector: str = None) -> dict:
             dilution_score = interp_score(dilution_pct, [(-10, 90), (0, 65), (2, 50),
                                                           (5, 35), (10, 20), (20, 10)])
             metrics['dilution_score'] = dilution_score
-            fundamental_components.append(dilution_score)
+            fund_capital_structure.append(dilution_score)
 
     # Cash quality: CFO/PAT computed from primary data (operating_cash_flow /
     # net_profit), aggregated over up to 3 latest years to smooth working-capital
@@ -1784,7 +1797,7 @@ def compute_derived_metrics(bucketed: dict, sector: str = None) -> dict:
                 cash_score = interp_score(cfo_pat, [(0, 15), (0.5, 40), (0.8, 65),
                                                     (1.0, 80), (1.3, 95)])
                 metrics['cash_score'] = cash_score
-                fundamental_components.append(cash_score)
+                fund_cash_workcap.append(cash_score)
 
     # Quarterly earnings trajectory: latest quarter net profit YoY (Q vs Q-4)
     def quarterly_series(field):
@@ -1810,7 +1823,7 @@ def compute_derived_metrics(bucketed: dict, sector: str = None) -> dict:
             qtr_score = 80 if latest_q > 0 else 15
             metrics['qtr_profit_yoy_pct'] = None
         metrics['qtr_growth_score'] = qtr_score
-        fundamental_components.append(qtr_score)
+        fund_growth.append(qtr_score)
 
     # Operating margin trend: latest annual OPM vs avg of prior 3 years (pp)
     opm_d = fin.get('operating_margin_pct', {})
@@ -1830,7 +1843,7 @@ def compute_derived_metrics(bucketed: dict, sector: str = None) -> dict:
             opm_score = interp_score(opm_trend, [(-6, 20), (-2, 40), (0, 55),
                                                  (2, 75), (6, 95)])
             metrics['opm_trend_score'] = opm_score
-            fundamental_components.append(opm_score)
+            fund_profitability.append(opm_score)
             break
 
     # Cash Conversion Cycle trend (Screener time-series) — working-capital
@@ -1850,7 +1863,7 @@ def compute_derived_metrics(bucketed: dict, sector: str = None) -> dict:
             ccc_score = interp_score(ccc_trend, [(-15, 90), (-5, 75), (0, 55),
                                                  (5, 35), (15, 15)])
             metrics['ccc_trend_score'] = ccc_score
-            fundamental_components.append(ccc_score)
+            fund_cash_workcap.append(ccc_score)
 
     # Dividend yield (trailing) — hump-shaped, not monotonic. Near-zero is
     # scored neutral rather than penalised, since a fast-growing company
@@ -1867,10 +1880,31 @@ def compute_derived_metrics(bucketed: dict, sector: str = None) -> dict:
         div_score = interp_score(dy_pct, [(0, 50), (1, 60), (3, 85),
                                           (6, 70), (10, 40), (15, 20)])
         metrics['dividend_score'] = div_score
-        fundamental_components.append(div_score)
+        fund_capital_allocation.append(div_score)
 
-    fundamental_score = round(sum(fundamental_components) / len(fundamental_components), 1) \
-                        if fundamental_components else None
+    # Fundamental pillar = equal-weighted average of the 5 theme scores that
+    # actually have data (not a flat average of every sub-metric — see note
+    # above). Each theme is itself the average of whichever of its metrics
+    # are available for this stock; a theme with none available is dropped
+    # rather than forced to zero or skipped-with-penalty.
+    fund_themes = {
+        'profitability_theme':      fund_profitability,
+        'growth_theme':             fund_growth,
+        'capital_structure_theme':  fund_capital_structure,
+        'cash_workcap_theme':       fund_cash_workcap,
+        'capital_allocation_theme': fund_capital_allocation,
+    }
+    theme_scores = []
+    for theme_name, components in fund_themes.items():
+        if components:
+            theme_score = round(sum(components) / len(components), 1)
+            metrics[theme_name] = theme_score
+            theme_scores.append(theme_score)
+        else:
+            metrics[theme_name] = None
+
+    fundamental_score = round(sum(theme_scores) / len(theme_scores), 1) \
+                        if theme_scores else None
     metrics['fundamental_score'] = fundamental_score
 
     # ── 2. VALUATION ──────────────────────────────────────────────────────────
