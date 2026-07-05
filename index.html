@@ -294,8 +294,9 @@
             <button class="qry-btn qry-btn-clr" onclick="clearQuery()">✕ CLR</button>
         </div>
 
-        <!-- ROW 2: Metric pills (fixed ~36vh, scrollable) -->
-        <div style="flex-shrink:0;height:36vh;overflow-y:auto;-webkit-overflow-scrolling:touch;border-bottom:2px solid #00f2ff;">
+        <!-- ROW 2: Metric pills (36vh expanded, collapses to a thin strip
+             once results are shown, so results get almost all the space) -->
+        <div id="qry-pill-wrapper" style="flex-shrink:0;height:36vh;overflow-y:auto;-webkit-overflow-scrolling:touch;border-bottom:2px solid #00f2ff;transition:height 0.2s ease;">
             <div id="qry-pill-area" style="padding-bottom:6px;"></div>
         </div>
 
@@ -1607,6 +1608,7 @@ function sigFundamentalSub(cm) {
         roa:   {s:cm.roa_score??0,        hasData:cm.roa_score!=null,        label:'ROA%',          val:sigPipeFmt(cm.roa_pct,2,'%')},
         revg:  {s:cm.revenue_growth_score??0, hasData:cm.revenue_growth_score!=null, label:'Revenue Growth', val:sigPipeFmt(cm.revenue_growth_yoy,1,'%')},
         qoq:   {s:cm.earnings_growth_qoq_score??0, hasData:cm.earnings_growth_qoq_score!=null, label:'QTR PAT QoQ', val:sigPipeFmt(cm.earnings_growth_qoq,1,'%')},
+        epscagr: {s:cm.eps_cagr_score??0, hasData:cm.eps_cagr_score!=null, label:'EPS CAGR (3Y)', val:sigPipeFmt(cm.eps_cagr_3y_pct,1,'%')},
         liq:   {s:cm.liquidity_score??0,  hasData:cm.liquidity_score!=null,  label:'Current Ratio', val:cm.current_ratio!=null?cm.current_ratio.toFixed(2)+'x':'N/A'},
         quick: {s:cm.quick_score??0,      hasData:cm.quick_score!=null,      label:'Quick Ratio',   val:cm.quick_ratio!=null?cm.quick_ratio.toFixed(2)+'x':'N/A'},
         dil:   {s:cm.dilution_score??0,   hasData:cm.dilution_score!=null,   label:'Dilution YoY',  val:sigPipeFmt(cm.dilution_yoy_pct,2,'%')},
@@ -1998,7 +2000,7 @@ function showSignalView() {
 const QRY_METRICS = [
     // ── PRICE & MARKET ──────────────────────────────────────
     { label:'LTP',            group:'Price',      unit:'₹',   fn: s => _qN(s.price?.close_price||s.price?.ltp?.price) },
-    { label:'Market Cap',     group:'Price',      unit:'₹Cr', fn: s => _qN(s.valuation?.market_cap) && _qN(s.valuation.market.market_cap)/1e7 },
+    { label:'Market Cap',     group:'Price',      unit:'₹Cr', fn: s => { const v=_qN(s.valuation?.market?.market_cap); return v!=null?v/1e7:null; } },
     { label:'52W High',       group:'Price',      unit:'₹',   fn: s => _qN(s.price?.['52_week']?.high) },
     { label:'52W Low',        group:'Price',      unit:'₹',   fn: s => _qN(s.price?.['52_week']?.low) },
     { label:'52W Chg%',       group:'Price',      unit:'%',   fn: s => { const v=_qN(s.price?.['52_week']?.change_pct); return v!==null?v:null; } },
@@ -2010,23 +2012,30 @@ const QRY_METRICS = [
     // ── VALUATION ────────────────────────────────────────────
     { label:'PE (TTM)',        group:'Valuation',  unit:'x',   fn: s => _qN(s.valuation?.pe?.pe_ttm) },
     { label:'PE (Fwd)',        group:'Valuation',  unit:'x',   fn: s => _qN(s.valuation?.pe?.pe_forward) },
-    { label:'PEG',             group:'Valuation',  unit:'x',   fn: s => _qN(s.valuation?.pe?.peg) },
+    { label:'PE Compression%', group:'Valuation',  unit:'%',   fn: s => { const cm=s.derived_metrics?.calculated_metrics; return cm?_qN(cm.pe_compression_pct):null; } },
+    { label:'PEG',             group:'Valuation',  unit:'x',   fn: s => _qN(s.valuation?.pe?.peg_ttm) },
     { label:'P/B',             group:'Valuation',  unit:'x',   fn: s => _qN(s.valuation?.pe?.price_to_book) },
     { label:'EV/EBITDA',       group:'Valuation',  unit:'x',   fn: s => _qN(s.valuation?.pe?.ev_to_ebitda) },
     { label:'EV/Revenue',      group:'Valuation',  unit:'x',   fn: s => _qN(s.valuation?.pe?.ev_to_revenue) },
+    { label:'P/S',             group:'Valuation',  unit:'x',   fn: s => _qN(s.valuation?.pe?.price_to_sales) },
     { label:'Book Value',      group:'Valuation',  unit:'₹',   fn: s => _qN(s.valuation?.market?.book_value) },
-    { label:'EPS (TTM)',        group:'Valuation',  unit:'₹',   fn: s => _qN(s.valuation?.eps?.eps_ttm)||_qN(s.valuation?.eps?.eps_ttm) },
-    { label:'EPS (Fwd)',        group:'Valuation',  unit:'₹',   fn: s => _qN(s.valuation?.eps?.eps_forward) },
-    { label:'EPS (Basic)',      group:'Valuation',  unit:'₹',   fn: s => _qN(s.valuation?.history?.basic_eps) },
-    { label:'Target Price',     group:'Valuation',  unit:'₹',   fn: s => _qN(s.websignals?.target_mean) },
-    { label:'Upside%',          group:'Valuation',  unit:'%',   fn: s => { const c=_qN(s.price?.close_price||s.price?.ltp?.price),t=_qN(s.websignals?.target_mean); return c&&t?((t-c)/c*100):null; } },
+    { label:'EPS (TTM)',       group:'Valuation',  unit:'₹',   fn: s => _qN(s.valuation?.eps?.eps_ttm) },
+    { label:'EPS (Fwd)',       group:'Valuation',  unit:'₹',   fn: s => _qN(s.valuation?.eps?.eps_forward) },
+    { label:'EPS (Current Yr)',group:'Valuation',  unit:'₹',   fn: s => _qN(s.valuation?.eps?.eps_current_year) },
+    { label:'EPS (Basic)',     group:'Valuation',  unit:'₹',   fn: s => _qLD(s.valuation?.history?.basic_eps) },
+    { label:'EPS CAGR 3Y%',    group:'Valuation',  unit:'%',   fn: s => { const cm=s.derived_metrics?.calculated_metrics; return cm?_qN(cm.eps_cagr_3y_pct):null; } },
+    { label:'Target Price',    group:'Valuation',  unit:'₹',   fn: s => _qN(s.websignals?.target_mean) },
+    { label:'Target High',     group:'Valuation',  unit:'₹',   fn: s => _qN(s.websignals?.target_high) },
+    { label:'Target Low',      group:'Valuation',  unit:'₹',   fn: s => _qN(s.websignals?.target_low) },
+    { label:'Upside%',         group:'Valuation',  unit:'%',   fn: s => { const c=_qN(s.price?.close_price||s.price?.ltp?.price),t=_qN(s.websignals?.target_mean); return c&&t?((t-c)/c*100):null; } },
     // ── PROFITABILITY ────────────────────────────────────────
     { label:'ROCE%',            group:'Profitability', unit:'%', fn: s => _qLD(s.ratios?.screener?.roce_pct) },
     { label:'ROE%',             group:'Profitability', unit:'%', fn: s => { const scr=_qLD(s.ratios?.screener?.roe_pct); if(scr!=null) return scr; const v=_qN(s.ratios?.ttm?.roe_pct); return v!=null?v*100:null; } },
+    { label:'ROA%',             group:'Profitability', unit:'%', fn: s => { const v=_qN(s.ratios?.ttm?.roa_pct); return v!=null?v*100:null; } },
     { label:'OPM%',             group:'Profitability', unit:'%', fn: s => _qLD(s.financials?.operating_margin_pct?.consolidated?.annual)||_qLD(s.financials?.operating_margin_pct?.standalone?.annual) },
-    { label:'NPM%',             group:'Profitability', unit:'%', fn: s => _qN(s.ratios?.ttm?.net_margin_pct) },
-    { label:'Gross Margin%',    group:'Profitability', unit:'%', fn: s => _qN(s.ratios?.ttm?.gross_margin_pct) },
-    { label:'EBITDA Margin%',   group:'Profitability', unit:'%', fn: s => _qN(s.ratios?.ttm?.ebitda_margin_pct) },
+    { label:'NPM%',             group:'Profitability', unit:'%', fn: s => { const v=_qN(s.ratios?.ttm?.net_margin_pct); return v!=null?v*100:null; } },
+    { label:'Gross Margin%',    group:'Profitability', unit:'%', fn: s => { const v=_qN(s.ratios?.ttm?.gross_margin_pct); return v!=null?v*100:null; } },
+    { label:'EBITDA Margin%',   group:'Profitability', unit:'%', fn: s => { const v=_qN(s.ratios?.ttm?.ebitda_margin_pct); return v!=null?v*100:null; } },
     // ── FINANCIALS (latest annual) ───────────────────────────
     { label:'Sales (Cr)',       group:'Financials', unit:'₹Cr', fn: s => _qLD(s.financials?.revenue?.consolidated?.annual)||_qLD(s.financials?.revenue?.standalone?.annual) },
     { label:'Net Profit (Cr)',  group:'Financials', unit:'₹Cr', fn: s => _qLD(s.financials?.net_profit?.consolidated?.annual)||_qLD(s.financials?.net_profit?.standalone?.annual) },
@@ -2035,25 +2044,45 @@ const QRY_METRICS = [
     { label:'Borrowings (Cr)',  group:'Financials', unit:'₹Cr', fn: s => _qLD(s.financials?.borrowings?.consolidated?.annual)||_qLD(s.financials?.borrowings?.standalone?.annual) },
     { label:'CFO/OP%',          group:'Financials', unit:'%',   fn: s => _qLD(s.financials?.cash_conversion_ratio?.consolidated?.annual)||_qLD(s.financials?.cash_conversion_ratio?.standalone?.annual) },
     { label:'Sales CAGR 3Y%',   group:'Financials', unit:'%',   fn: s => { const d=s.financials?.revenue?.consolidated?.annual||s.financials?.revenue?.standalone?.annual||{}; const keys=Object.keys(d).sort(); if(keys.length<4) return null; const s3=_qN(d[keys[keys.length-4]]),s0=_qN(d[keys[keys.length-1]]); return s3&&s0&&s3>0?(Math.pow(s0/s3,1/3)-1)*100:null; } },
+    { label:'Net Cash/MCap%',   group:'Financials', unit:'%',   fn: s => { const cm=s.derived_metrics?.calculated_metrics; return cm?_qN(cm.net_cash_pct_mcap):null; } },
+    { label:'Other Income/EBIT%', group:'Financials', unit:'%', fn: s => { const cm=s.derived_metrics?.calculated_metrics; return cm?_qN(cm.other_income_pct_ebit):null; } },
+    { label:'Exceptional/PBT%', group:'Financials', unit:'%',   fn: s => { const cm=s.derived_metrics?.calculated_metrics; return cm?_qN(cm.exceptional_items_pct_pbt):null; } },
+    { label:'Receivables Div (pp)', group:'Financials', unit:'pp', fn: s => { const cm=s.derived_metrics?.calculated_metrics; return cm?_qN(cm.receivables_divergence_pp):null; } },
     // ── BALANCE SHEET ────────────────────────────────────────
-    { label:'D/E Ratio',        group:'Balance Sheet', unit:'x', fn: s => _qN(s.ratios?.ttm?.debt_to_equity_ratio) },
+    { label:'D/E Ratio',        group:'Balance Sheet', unit:'x', fn: s => { const cm=s.derived_metrics?.calculated_metrics; return cm?_qN(cm.debt_to_equity):null; } },
     { label:'Current Ratio',    group:'Balance Sheet', unit:'x', fn: s => _qN(s.ratios?.ttm?.current_ratio) },
     { label:'Quick Ratio',      group:'Balance Sheet', unit:'x', fn: s => _qN(s.ratios?.ttm?.quick_ratio) },
-    { label:'Interest Coverage',group:'Balance Sheet', unit:'x', fn: s => _qN(s.ratios?.ttm?.current_ratio) },
+    { label:'Dilution YoY%',    group:'Balance Sheet', unit:'%', fn: s => { const cm=s.derived_metrics?.calculated_metrics; return cm?_qN(cm.dilution_yoy_pct):null; } },
     // ── EFFICIENCY ───────────────────────────────────────────
     { label:'Debtor Days',      group:'Efficiency', unit:'d',   fn: s => _qLD(s.ratios?.screener?.debtor_days) },
     { label:'Inventory Days',   group:'Efficiency', unit:'d',   fn: s => _qLD(s.ratios?.screener?.inventory_days) },
     { label:'Cash Conv Cycle',  group:'Efficiency', unit:'d',   fn: s => _qLD(s.ratios?.screener?.cash_conversion_cycle) },
+    { label:'CCC Trend (d)',    group:'Efficiency', unit:'d',   fn: s => { const cm=s.derived_metrics?.calculated_metrics; return cm?_qN(cm.ccc_trend_days):null; } },
+    // ── TECHNICAL ────────────────────────────────────────────
+    { label:'RSI (14)',         group:'Technical',  unit:'',    fn: s => { const cm=s.derived_metrics?.calculated_metrics; return cm?_qN(cm.rsi_14):null; } },
+    { label:'Beta',             group:'Technical',  unit:'',    fn: s => _qN(s.price?.ltp?.beta) },
+    { label:'Volume Ratio',     group:'Technical',  unit:'x',   fn: s => { const cm=s.derived_metrics?.calculated_metrics; return cm?_qN(cm.volume_ratio):null; } },
+    { label:'ATH Distance%',    group:'Technical',  unit:'%',   fn: s => { const cm=s.derived_metrics?.calculated_metrics; return cm?_qN(cm.ath_distance_pct):null; } },
+    { label:'MA Strength%',     group:'Technical',  unit:'%',   fn: s => { const cm=s.derived_metrics?.calculated_metrics; return cm?_qN(cm.ma_strength_pct):null; } },
+    { label:'3M Return%',       group:'Technical',  unit:'%',   fn: s => { const cm=s.derived_metrics?.calculated_metrics; return cm?_qN(cm.return_3m_pct):null; } },
+    { label:'vs Index 52W (pp)',group:'Technical',  unit:'pp',  fn: s => { const cm=s.derived_metrics?.calculated_metrics; return cm?_qN(cm.relative_strength_pp):null; } },
     // ── SHAREHOLDING ─────────────────────────────────────────
     { label:'Promoter%',        group:'Shareholding', unit:'%', fn: s => _qLD(s.company_details?.shareholding?.pattern?.promoters) },
     { label:'FII%',             group:'Shareholding', unit:'%', fn: s => _qLD(s.company_details?.shareholding?.pattern?.fiis) },
     { label:'DII%',             group:'Shareholding', unit:'%', fn: s => _qLD(s.company_details?.shareholding?.pattern?.diis) },
     { label:'Public%',          group:'Shareholding', unit:'%', fn: s => _qLD(s.company_details?.shareholding?.pattern?.public) },
     { label:'Promoter Δ (1Y)',  group:'Shareholding', unit:'pp', fn: s => { const d=s.company_details?.shareholding?.pattern?.promoters||{}; const k=Object.keys(d).sort(); if(k.length<5) return null; const lt=_qN(d[k[k.length-1]]),yr=_qN(d[k[k.length-5]]); return lt!==null&&yr!==null?lt-yr:null; } },
+    { label:'Institutional Hold%', group:'Shareholding', unit:'%', fn: s => { const v=_qN(s.company_details?.shareholding?.ownership?.institutional_holding_pct); return v!=null?v*100:null; } },
+    { label:'Insider Hold%',    group:'Shareholding', unit:'%', fn: s => { const v=_qN(s.company_details?.shareholding?.ownership?.insider_holding_pct); return v!=null?v*100:null; } },
+    { label:'Shareholder Δ QoQ%', group:'Shareholding', unit:'%', fn: s => { const cm=s.derived_metrics?.calculated_metrics; return cm?_qN(cm.shareholder_growth_qoq_pct):null; } },
     // ── ANALYST ──────────────────────────────────────────────
     { label:'Analyst Count',    group:'Analyst',    unit:'',    fn: s => _qN(s.websignals?.analyst_count) },
     { label:'Rec Mean (1=SB)',  group:'Analyst',    unit:'',    fn: s => _qN(s.websignals?.analyst_rating_score) },
+    { label:'Target Spread%',   group:'Analyst',    unit:'%',   fn: s => { const cm=s.derived_metrics?.calculated_metrics; return cm?_qN(cm.analyst_target_spread_pct):null; } },
     { label:'Gov Risk (1-10)',  group:'Analyst',    unit:'',    fn: s => _qN(s.websignals?.governance_overall_risk) },
+    // ── AI INSIGHTS ──────────────────────────────────────────
+    { label:'AI Qualitative',   group:'AI Insights', unit:'',   fn: s => { const cm=s.derived_metrics?.calculated_metrics; return cm?_qN(cm.ai_qualitative_score):null; } },
+    { label:'Mgmt Confidence',  group:'AI Insights', unit:'',   fn: s => { const cm=s.derived_metrics?.calculated_metrics; return cm?_qN(cm.management_confidence_score):null; } },
     // ── SIGNAL SCORES ────────────────────────────────────────
     { label:'Signal Score',     group:'Signal',     unit:'',    fn: s => { const sig=SIG_ALL.find(x=>x.ticker===s.ticker); return sig?sig.comp:null; } },
     { label:'Fundamental Score',group:'Signal',     unit:'',    fn: s => { const sig=SIG_ALL.find(x=>x.ticker===s.ticker); return sig?sig.F.score:null; } },
@@ -2089,20 +2118,43 @@ function _qLD(dict) {
 // ---- STATE ----
 let QRY_SELECTED = null;  // currently selected metric label
 let QRY_RESULTS  = [];    // last result set
+let QRY_PILLS_EXPANDED = true;  // collapses to a thin strip once results show
 
-// ---- INIT PILL AREA ----
-function initQueryTab() {
+// ---- RENDER PILL AREA (full picker or collapsed strip) ----
+function renderQryPillArea() {
+    const wrapper = document.getElementById('qry-pill-wrapper');
+    const area = document.getElementById('qry-pill-area');
+    if(!QRY_PILLS_EXPANDED && QRY_SELECTED) {
+        wrapper.style.height = '38px';
+        area.innerHTML = `
+            <div onclick="toggleQryPills()" style="display:flex;align-items:center;justify-content:space-between;padding:9px 12px;cursor:pointer">
+                <span style="font-size:10px;color:#00f2ff;font-weight:800;letter-spacing:0.04em">📊 ${QRY_SELECTED}</span>
+                <span style="font-size:8px;color:#bbb">▼ change metric</span>
+            </div>`;
+        return;
+    }
+    wrapper.style.height = '36vh';
     const groups = {};
     QRY_METRICS.forEach(m => { if(!groups[m.group]) groups[m.group]=[]; groups[m.group].push(m); });
-    const area = document.getElementById('qry-pill-area');
     area.innerHTML = Object.entries(groups).map(([grp, metrics]) => `
         <div class="qry-pill-wrap" style="padding-bottom:2px">
             <span class="qry-pill cat">${grp}</span>
-            ${metrics.map(m => `<span class="qry-pill" id="qp-${m.label.replace(/[^a-zA-Z0-9]/g,'_')}" onclick="qrySelect('${m.label}')">${m.label}</span>`).join('')}
+            ${metrics.map(m => `<span class="qry-pill${m.label===QRY_SELECTED?' sel':''}" id="qp-${m.label.replace(/[^a-zA-Z0-9]/g,'_')}" onclick="qrySelect('${m.label}')">${m.label}</span>`).join('')}
         </div>`).join('');
-    // Reset
+}
+
+// ---- TOGGLE PILL AREA (tap the collapsed strip to change metric) ----
+function toggleQryPills() {
+    QRY_PILLS_EXPANDED = true;
+    renderQryPillArea();
+}
+
+// ---- INIT PILL AREA ----
+function initQueryTab() {
     QRY_SELECTED=null;
     QRY_RESULTS=[];
+    QRY_PILLS_EXPANDED=true;
+    renderQryPillArea();
 }
 
 // ---- SELECT METRIC ----
@@ -2212,6 +2264,11 @@ function runQuery() {
             </div>`;
         }).join('')}
         ${rows.length>display.length?`<div style="padding:10px;text-align:center;font-size:9px;color:#bbb">+ ${rows.length-display.length} more — change limit to see all</div>`:''}`;
+
+    // Collapse the picker now that results are showing — this is the whole
+    // point: 36vh of metric pills was leaving too little room for results.
+    QRY_PILLS_EXPANDED = false;
+    renderQryPillArea();
 }
 
 // ---- CLEAR ----
@@ -2222,6 +2279,8 @@ function clearQuery() {
     }
     QRY_SELECTED=null;
     QRY_RESULTS=[];
+    QRY_PILLS_EXPANDED=true;
+    renderQryPillArea();
     document.getElementById('qry-results').innerHTML='<div class="qry-empty">Pick a metric above<br>then tap ▶ RUN</div>';
     document.getElementById('qry-stats').style.display='none';
 }
