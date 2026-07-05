@@ -536,7 +536,12 @@ const resolve = (obj, field) => {
                              return h.map(x => (x.demat || '?').slice(0, 2).toLowerCase()).join('|');
                          }},
         'INVESTED':      { paths: ['invested'] },
-        'ROE%':          { fn: s => { const v = s?.ratios?.ttm?.roe_pct; return v != null ? v * 100 : undefined; }},
+        'ROE%':          { fn: s => {
+                             const scr = _latest(s?.ratios?.screener?.roe_pct);
+                             if (scr != null) return scr;
+                             const v = s?.ratios?.ttm?.roe_pct;
+                             return v != null ? v * 100 : undefined;
+                         }},
         'ROCE%':         { fn: s => _latest(s?.ratios?.screener?.roce_pct) },
         'OPM%':          { fn: s => { const v = s?.ratios?.ttm?.operating_margin_pct; return v != null ? v * 100 : undefined; }},
         'NPM%':          { fn: s => { const v = s?.ratios?.ttm?.net_margin_pct; return v != null ? v * 100 : undefined; }},
@@ -2108,6 +2113,19 @@ function sigRenderDetail(ticker) {
             own:   {s:cm.ownership_score??0,  hasData:cm.ownership_score!=null,  label:'OWNERSHIP',
                     val:(cm.promoter_chg_qoq_pp!=null||cm.institutional_chg_qoq_pp!=null)
                         ?`P${sigPipeFmt(cm.promoter_chg_qoq_pp,2,'')} I${sigPipeFmt(cm.institutional_chg_qoq_pp,2,'')}`:'N/A'},
+            roa:   {s:cm.roa_score??0,        hasData:cm.roa_score!=null,        label:'ROA%',        val:sigPipeFmt(cm.roa_pct,2,'%')},
+            revg:  {s:cm.revenue_growth_score??0, hasData:cm.revenue_growth_score!=null, label:'REV GROWTH', val:sigPipeFmt(cm.revenue_growth_yoy,1,'%')},
+            qoq:   {s:cm.earnings_growth_qoq_score??0, hasData:cm.earnings_growth_qoq_score!=null, label:'QTR PAT QOQ', val:sigPipeFmt(cm.earnings_growth_qoq,1,'%')},
+            liq:   {s:cm.liquidity_score??0,  hasData:cm.liquidity_score!=null,  label:'CURRENT RATIO', val:cm.current_ratio!=null?cm.current_ratio.toFixed(2)+'x':'N/A'},
+            dil:   {s:cm.dilution_score??0,   hasData:cm.dilution_score!=null,   label:'DILUTION YoY', val:sigPipeFmt(cm.dilution_yoy_pct,2,'%')},
+            ccc:   {s:cm.ccc_trend_score??0,  hasData:cm.ccc_trend_score!=null,  label:'CCC TREND',   val:cm.ccc_trend_days!=null?sigPipeFmt(cm.ccc_trend_days,1,'d'):'N/A'},
+            div:   {s:cm.dividend_score??0,   hasData:cm.dividend_score!=null,   label:'DIV YIELD',   val:sigPipeFmt(cm.dividend_yield_pct,2,'%')},
+            evebd: {s:cm.ev_ebitda_score??0,  hasData:cm.ev_ebitda_score!=null,  label:'EV/EBITDA',   val:cm.ev_ebitda_ratio!=null?cm.ev_ebitda_ratio.toFixed(1)+'x':'N/A'},
+            prof:  {s:cm.profitability_theme??0, hasData:cm.profitability_theme!=null, label:'θ PROFITABILITY', val:''},
+            growt: {s:cm.growth_theme??0,      hasData:cm.growth_theme!=null,      label:'θ GROWTH',    val:''},
+            capst: {s:cm.capital_structure_theme??0, hasData:cm.capital_structure_theme!=null, label:'θ CAPITAL STRUCTURE', val:''},
+            cashw: {s:cm.cash_workcap_theme??0, hasData:cm.cash_workcap_theme!=null, label:'θ CASH/WORKCAP', val:''},
+            capal: {s:cm.capital_allocation_theme??0, hasData:cm.capital_allocation_theme!=null, label:'θ CAPITAL ALLOCATION', val:''},
         };
         const pipePillar={score:Math.round(cm.composite_score), sub:pipeSub};
         html+=sigPillarCard('pipe','QUANT RATING','🧮',pipePillar,pc);
@@ -2295,7 +2313,7 @@ const QRY_METRICS = [
     { label:'Upside%',          group:'Valuation',  unit:'%',   fn: s => { const c=_qN(s.price?.close_price||s.price?.ltp?.price),t=_qN(s.websignals?.target_mean); return c&&t?((t-c)/c*100):null; } },
     // ── PROFITABILITY ────────────────────────────────────────
     { label:'ROCE%',            group:'Profitability', unit:'%', fn: s => _qLD(s.ratios?.screener?.roce_pct) },
-    { label:'ROE%',             group:'Profitability', unit:'%', fn: s => _qLD(s.ratios?.ttm?.roe_pct) },
+    { label:'ROE%',             group:'Profitability', unit:'%', fn: s => { const scr=_qLD(s.ratios?.screener?.roe_pct); if(scr!=null) return scr; const v=_qN(s.ratios?.ttm?.roe_pct); return v!=null?v*100:null; } },
     { label:'OPM%',             group:'Profitability', unit:'%', fn: s => _qLD(s.financials?.operating_margin_pct?.consolidated?.annual)||_qLD(s.financials?.operating_margin_pct?.standalone?.annual) },
     { label:'NPM%',             group:'Profitability', unit:'%', fn: s => _qN(s.ratios?.ttm?.net_margin_pct) },
     { label:'Gross Margin%',    group:'Profitability', unit:'%', fn: s => _qN(s.ratios?.ttm?.gross_margin_pct) },
@@ -3420,8 +3438,8 @@ const CMP_GROUPS = [
         title: 'Profitability',
         metrics: [
             { label:'ROCE%',         fn: s=>_qLD(s.ratios?.screener?.roce_pct), unit:'%', hi:true },
-            { label:'ROE%',          fn: s=>(_qN(s.ratios?.return_on_equity)||0)*100, unit:'%', hi:true },
-            { label:'ROA%',          fn: s=>(_qN(s.ratios?.return_on_assets)||0)*100, unit:'%', hi:true },
+            { label:'ROE%',          fn: s=>{ const scr=_qLD(s.ratios?.screener?.roe_pct); return scr!=null?scr:(_qN(s.ratios?.ttm?.roe_pct)||0)*100; }, unit:'%', hi:true },
+            { label:'ROA%',          fn: s=>(_qN(s.ratios?.ttm?.roa_pct)||0)*100, unit:'%', hi:true },
             { label:'OPM%',          fn: s=>_qLD(s.financials?.operating_margin_pct?.consolidated?.annual)||_qLD(s.financials?.operating_margin_pct?.standalone?.annual), unit:'%', hi:true },
             { label:'NPM%',          fn: s=>(_qN(s.ratios?.ttm?.net_margin_pct)||0)*100, unit:'%', hi:true },
             { label:'Gross Margin%', fn: s=>(_qN(s.ratios?.ttm?.gross_margin_pct)||0)*100, unit:'%', hi:true },
