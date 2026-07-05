@@ -1,55 +1,59 @@
 name: Keep Alive & Rebuild Pages
 
 on:
- schedule:
-   - cron: '0 0 * * 0'   # every Sunday midnight UTC
- workflow_dispatch:
- push:
-   paths:
-     - '*.py'
-     - '*.js'
-     - '*.html'
-     - '*.csv'
-     - '.github/workflows/**'
-   branches:
-     - main
+  schedule:
+    - cron: '0 0 * * 0'   # every Sunday midnight UTC
+  workflow_dispatch:
+  push:
+    paths:
+      - '*.py'
+      - '*.js'
+      - '*.html'
+      - '*.csv'
+      - '.github/workflows/**'
+    branches:
+      - main
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
 
 jobs:
- keepalive:
-   runs-on: ubuntu-latest
-   permissions:
-     contents: write
-   steps:
-     - uses: actions/checkout@v4
-     - run: |
-         git config user.name  "github-actions[bot]"
-         git config user.email "github-actions[bot]@users.noreply.github.com"
-         echo "$(date -u)" > .keepalive
-         git add .keepalive
-         git commit -m "chore: keepalive [skip ci]" || echo "Nothing to commit"
-         git push || echo "Nothing to push"
+  keepalive:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          echo "$(date -u)" > .keepalive
+          git add .keepalive
+          git commit -m "chore: keepalive [skip ci]" || echo "Nothing to commit"
+          git push || echo "Nothing to push"
 
- rebuild-pages:
-   runs-on: ubuntu-latest
-   permissions:
-     contents: read
-     pages: write
-     id-token: write
-   environment:
-     name: github-pages
-     url: ${{ steps.deployment.outputs.page_url }}
-   steps:
-     - uses: actions/checkout@v4
-     - name: Build site
-       run: |
-         echo "Building GitHub Pages..."
-         echo "✓ Files ready for deployment"
-     - name: Setup Pages
-       uses: actions/configure-pages@v4
-     - name: Upload artifact
-       uses: actions/upload-pages-artifact@v3
-       with:
-         path: '.'
-     - name: Deploy to Pages
-       id: deployment
-       uses: actions/deploy-pages@v4
+  rebuild-pages:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build site
+        run: |
+          echo "Building GitHub Pages..."
+          echo "✓ Files ready for deployment"
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: '.'
+      - name: Deploy to Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
