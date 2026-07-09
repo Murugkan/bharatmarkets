@@ -720,6 +720,40 @@ SECTOR_ALIASES = {
     "auto components":                 "Consumer Discretionary",
     "health care":                     "Healthcare",
     "communication services":         "Telecom",
+    # v3: common NSE/Screener sector labels seen in hand-curated
+    # unified-symbols.json entries (MIRZAINT "Leather" fell to Other).
+    "leather":                         "Consumer Discretionary",
+    "footwear":                        "Consumer Discretionary",
+    "textiles":                        "Consumer Discretionary",
+    "consumer durables":               "Consumer Discretionary",
+    "fmcg":                            "Consumer Staples",
+    "power":                           "Utilities",
+    "oil & gas":                       "Energy",
+    "oil and gas":                     "Energy",
+    "metals & mining":                 "Materials",
+    "metals and mining":               "Materials",
+    "realty":                          "Real Estate",
+    "banking":                         "Financials",
+    "banks":                           "Financials",
+}
+
+# v3.1: Yahoo Finance's sector taxonomy is a CLOSED set of 11 values, so this
+# map is complete and cannot silently go stale the way free-text aliases can.
+# Used as the DYNAMIC fallback when a unified-symbols master label doesn't
+# resolve — any new hand-typed label (e.g. 'Leather') then picks up the
+# correct GICS profile from the symbol's own fetched data, no code change.
+YAHOO_SECTOR_MAP = {
+    "technology":             "Information Technology",
+    "financial services":     "Financials",
+    "consumer cyclical":      "Consumer Discretionary",
+    "consumer defensive":     "Consumer Staples",
+    "healthcare":             "Healthcare",
+    "industrials":            "Industrials",
+    "basic materials":        "Materials",
+    "energy":                 "Energy",
+    "utilities":              "Utilities",
+    "communication services": "Telecom",
+    "real estate":            "Real Estate",
 }
 
 def resolve_sector(sector: str) -> str:
@@ -1608,11 +1642,38 @@ def compute_derived_metrics(bucketed: dict, sector: str = None) -> dict:
     # Sector from caller (unified-symbols) → fallback to company_details → fallback
     if not sector:
         sector = bucketed.get("company_details", {}).get("sector", "Other")
-    sector = resolve_sector(sector)
+    # v3.1 dynamic sector resolution — unified-symbols.json is MASTER:
+    #   tier 1  master label already a canonical SECTOR_PROFILES key → verbatim
+    #   tier 2  master label via SECTOR_ALIASES (known variants/typos)
+    #   tier 3  DYNAMIC: Yahoo's closed 11-value sector taxonomy from the
+    #           symbol's own fetched data (sector_yahoo) — a new master label
+    #           like 'Leather' resolves correctly with NO code change
+    #   tier 4  'Other' + advisory audit T flags it
+    # Master always wins when it resolves (tiers 1–2 before 3): e.g. the
+    # curated 'Defence' label overrides Yahoo's generic 'Industrials'.
+    raw_sector = sector
+    sector = resolve_sector(raw_sector)
+    if raw_sector in SECTOR_PROFILES:
+        sector_source = 'unified'
+    elif sector != 'Other':
+        sector_source = 'alias'
+    else:
+        yf_sec = str(bucketed.get("company_details", {})
+                     .get("sector_yahoo") or '').strip().lower()
+        mapped = YAHOO_SECTOR_MAP.get(yf_sec)
+        if mapped:
+            sector, sector_source = mapped, 'yahoo'
+        else:
+            sector_source = 'fallback'
     industry = bucketed.get("company_details", {}).get("industry")
     sector_profile = apply_industry_override(SECTOR_PROFILES[sector], industry)
 
-    metrics = {"sector": sector, "industry": industry}
+    metrics = {"sector": sector, "industry": industry,
+               "sector_source": sector_source}
+    # v3: keep the pre-resolution label whenever it was normalised/fell
+    # through, so unmapped labels are auditable instead of silently 'Other'.
+    if raw_sector and raw_sector != sector:
+        metrics["sector_raw"] = raw_sector
 
     # ── Helpers ───────────────────────────────────────────────────────────────
     def latest_annual(field):
@@ -3316,14 +3377,17 @@ def standardize_field_names(bucketed: dict) -> dict:
         # If missing (unified_symbols not loaded), fall back to sector_yahoo.
         if not cd.get('sector') and cd.get('sector_yahoo'):
             cd['sector'] = cd['sector_yahoo']
-        # Remove Yahoo sector/industry — unified_symbols is the source of truth
+        # Remove Yahoo sector/industry display variants — unified_symbols is
+        # the source of truth. v3.1: sector_yahoo is KEPT (no longer dropped):
+        # it's the dynamic fallback in compute_derived_metrics() when the
+        # master label doesn't resolve to a GICS profile (closed 11-value
+        # taxonomy — see YAHOO_SECTOR_MAP).
         cd = rename_keys(cd, {
             'long_name':                 'company_name',
             'short_name':                'display_name',
             'long_business_summary':     'business_description',
             'full_time_employees':       'employee_count',
             'symbol_yahoo':              'yahoo_symbol',
-            'sector_yahoo':              '__drop__',
             'industry_yahoo':            '__drop__',
             'sector_disp':               '__drop__',
             'industry_disp':             '__drop__',
@@ -3890,6 +3954,22 @@ def _audit(output: dict, log) -> bool:
         if anchor and abs(median - anchor) / anchor > 0.40:
             log.info(f"  AUDIT ℹ S. {sec}: median PE {median:.0f} vs pe_fair "
                      f"{anchor} ({(median - anchor) / anchor:+.0%}) — review anchor")
+
+    # T (advisory, non-blocking). Unmapped sector labels — equity tickers
+    # whose master label failed tiers 1–3 (canonical, alias, AND Yahoo
+    # dynamic fallback) and landed on the generic 'Other' profile. With
+    # v3.1 dynamic resolution this should be rare: it means the master
+    # label is unknown AND sector_yahoo is missing/unmappable. Fix = correct
+    # the unified-symbols entry (preferred, it's the master) or add alias.
+    NON_EQUITY_LABELS = {'etf', 'mutual fund', 'government securities'}
+    for t in sorted(cms):
+        cm = cms[t]
+        raw = cm.get('sector_raw')
+        if cm.get('sector') == 'Other' and raw \
+                and raw.strip().lower() not in NON_EQUITY_LABELS:
+            log.info(f"  AUDIT ℹ T. {t}: master label {raw!r} unmapped and no "
+                     f"Yahoo fallback → 'Other' profile — fix unified-symbols "
+                     f"entry or add SECTOR_ALIASES")
 
     total_checks = 18  # A through R (S is advisory)
     log.info(f"── Audit: {total_checks - len(failures)}/{total_checks} passed"
