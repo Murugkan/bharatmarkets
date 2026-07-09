@@ -747,6 +747,13 @@ def resolve_sector(sector: str) -> str:
 INDUSTRY_OVERRIDES = {
     "capital markets":  {"pe_fair": 40, "pb_fair": 9.0},   # depositories/exchanges
     "life insurance":   {"pe_fair": 55, "pb_fair": 6.0},   # embedded-value businesses
+    # v3: additional fee-based / asset-light Financials sub-industries that the
+    # lender-calibrated sector default (pe_fair=15 / pb_fair=2.5) mis-prices
+    # exactly the way CDSL/HDFCLIFE were. Starter values — same caveat as above.
+    "asset management":                 {"pe_fair": 30, "pb_fair": 8.0},   # AMCs
+    "insurance":                        {"pe_fair": 32, "pb_fair": 5.0},   # general insurers
+    "insurance brokers":                {"pe_fair": 35, "pb_fair": 6.0},
+    "financial data & stock exchanges": {"pe_fair": 45, "pb_fair": 11.0},
 }
 
 def apply_industry_override(sector_profile: dict, industry: str) -> dict:
@@ -1577,6 +1584,20 @@ def compute_derived_metrics(bucketed: dict, sector: str = None) -> dict:
     - hasData at pillar level: pillars with no data are excluded and
       remaining weights renormalized (no silent 50 defaults)
     - Loss-makers get a low valuation score instead of skipping PE
+
+    v3 scoring:
+    - Theme grouping extended from Fundamental to ALL pillars (valuation:
+      earnings/asset/enterprise multiples; technical: trend/momentum/
+      volatility; sentiment: analyst/ownership/AI) — correlated sub-metrics
+      no longer dominate a pillar just by being numerous
+    - RSI-14 and volume-surge computed and stored but EXCLUDED from the
+      technical pillar (daily-churn fast signals, display-only)
+    - week52_score floored at 15 / capped at 95 like every other component
+    - Dilution moved from Capital Structure to Capital Allocation theme
+    - RSI uses Wilder smoothing over up to 60 bars
+    - 3M momentum uses same-series closes (no live-LTP/bar-close mixing)
+    - D/E scoring extended to lim*4 → 10 (extreme leverage differentiated)
+    - Rating bands recentred: neutral (~55) sits mid-HOLD, BUY/SELL widened
     """
     fin        = bucketed.get("financials", {})
     rat        = bucketed.get("ratios", {})
@@ -1618,6 +1639,23 @@ def compute_derived_metrics(bucketed: dict, sector: str = None) -> dict:
                 return round(y0 + (y1 - y0) * (v - x0) / (x1 - x0))
         return points[-1][1]
 
+    def theme_average(theme_dict):
+        """Equal-weighted average of the themes that have data (v3, all
+        pillars). Same count-bias rationale everywhere: correlated
+        sub-metrics (3 PE-family reads, 4 momentum-family reads, 4 AI-derived
+        reads) must not dominate a pillar just by being numerous. Each theme
+        score is written into metrics; themes with no data are stored as
+        None and dropped from the average."""
+        scores = []
+        for name, components in theme_dict.items():
+            if components:
+                ts = round(sum(components) / len(components), 1)
+                metrics[name] = ts
+                scores.append(ts)
+            else:
+                metrics[name] = None
+        return round(sum(scores) / len(scores), 1) if scores else None
+
     # ── 1. FUNDAMENTAL ────────────────────────────────────────────────────────
     # Grouped into 5 themes, equal-weighted at the theme level rather than
     # flat-averaged across every sub-metric. Flat-averaging let themes with
@@ -1630,9 +1668,9 @@ def compute_derived_metrics(bucketed: dict, sector: str = None) -> dict:
     # is dropped, and the remaining themes still average equally.
     fund_profitability = []       # ROCE, ROE, ROA, net margin, OPM trend
     fund_growth = []              # earnings YoY, revenue YoY, qtr YoY, qtr QoQ
-    fund_capital_structure = []   # D/E, liquidity, dilution
+    fund_capital_structure = []   # D/E, liquidity, net cash
     fund_cash_workcap = []        # cash conversion (CFO/PAT), CCC trend
-    fund_capital_allocation = []  # dividend yield
+    fund_capital_allocation = []  # dividend yield, buybacks/dilution
 
     # ROCE (Screener time-series) — primary efficiency metric. Continuous;
     # negative ROCE is penalised hard, headroom above "excellent" still scores.
@@ -1785,7 +1823,7 @@ def compute_derived_metrics(bucketed: dict, sector: str = None) -> dict:
         metrics['debt_to_equity'] = round(de, 2)
         lim = sector_profile.get('de_limit', 2.0)
         de_score = interp_score(de, [(0, 100), (lim * 0.5, 80),
-                                     (lim, 55), (lim * 2, 25)])
+                                     (lim, 55), (lim * 2, 25), (lim * 4, 10)])
         metrics['de_score'] = de_score
         fund_capital_structure.append(de_score)
 
@@ -1832,7 +1870,10 @@ def compute_derived_metrics(bucketed: dict, sector: str = None) -> dict:
             dilution_score = interp_score(dilution_pct, [(-10, 90), (0, 65), (2, 50),
                                                           (5, 35), (10, 20), (20, 10)])
             metrics['dilution_score'] = dilution_score
-            fund_capital_structure.append(dilution_score)
+            # v3: filed under Capital Allocation with dividends — issuing or
+            # buying back shares is a capital-allocation decision, and this
+            # stops that theme being a single-metric (dividend-only) theme.
+            fund_capital_allocation.append(dilution_score)
 
     # Cash quality: CFO/PAT computed from primary data (operating_cash_flow /
     # net_profit), aggregated over up to 3 latest years to smooth working-capital
@@ -2006,28 +2047,22 @@ def compute_derived_metrics(bucketed: dict, sector: str = None) -> dict:
     # above). Each theme is itself the average of whichever of its metrics
     # are available for this stock; a theme with none available is dropped
     # rather than forced to zero or skipped-with-penalty.
-    fund_themes = {
+    fundamental_score = theme_average({
         'profitability_theme':      fund_profitability,
         'growth_theme':             fund_growth,
         'capital_structure_theme':  fund_capital_structure,
         'cash_workcap_theme':       fund_cash_workcap,
         'capital_allocation_theme': fund_capital_allocation,
-    }
-    theme_scores = []
-    for theme_name, components in fund_themes.items():
-        if components:
-            theme_score = round(sum(components) / len(components), 1)
-            metrics[theme_name] = theme_score
-            theme_scores.append(theme_score)
-        else:
-            metrics[theme_name] = None
-
-    fundamental_score = round(sum(theme_scores) / len(theme_scores), 1) \
-                        if theme_scores else None
+    })
     metrics['fundamental_score'] = fundamental_score
 
     # ── 2. VALUATION ──────────────────────────────────────────────────────────
-    valuation_components = []
+    # Theme-grouped (v3), same rationale as the fundamental pillar: the flat
+    # average let the three PE-family reads (trailing, forward, compression)
+    # carry ~half the pillar despite all keying off the same earnings estimate.
+    val_earnings   = []   # PE trailing, PE forward, PE compression, loss-maker penalty
+    val_asset      = []   # P/B
+    val_enterprise = []   # EV/EBITDA, EV/Revenue (P/S fallback)
 
     pe_ttm  = val.get('pe', {}).get('pe_ttm')
     pe_fair = sector_profile.get('pe_fair', 22)
@@ -2037,7 +2072,7 @@ def compute_derived_metrics(bucketed: dict, sector: str = None) -> dict:
                                          (pe_fair, 65), (pe_fair * 1.5, 45),
                                          (pe_fair * 2.5, 25), (pe_fair * 4, 10)])
         metrics['pe_score'] = pe_score
-        valuation_components.append(pe_score)
+        val_earnings.append(pe_score)
 
         # PE compression: forward vs trailing. Positive compression (forward
         # cheaper than trailing) means the market expects earnings growth —
@@ -2052,7 +2087,7 @@ def compute_derived_metrics(bucketed: dict, sector: str = None) -> dict:
             compression_score = interp_score(compression_pct, [(-50, 20), (-20, 35), (0, 50),
                                                                  (20, 65), (50, 80), (80, 95)])
             metrics['pe_compression_score'] = compression_score
-            valuation_components.append(compression_score)
+            val_earnings.append(compression_score)
 
             # Forward PE itself, scored against the same sector fair-value
             # benchmark as trailing PE. Compression only shows the direction
@@ -2065,7 +2100,7 @@ def compute_derived_metrics(bucketed: dict, sector: str = None) -> dict:
                                                     (pe_fair * 2.5, 25), (pe_fair * 4, 10)])
             metrics['pe_forward_ratio'] = round(pe_forward, 2)
             metrics['pe_forward_score'] = fwd_score
-            valuation_components.append(fwd_score)
+            val_earnings.append(fwd_score)
     else:
         # Loss-maker: PE undefined because earnings are negative → penalise,
         # don't silently skip. Only when we can confirm losses from margin.
@@ -2073,7 +2108,7 @@ def compute_derived_metrics(bucketed: dict, sector: str = None) -> dict:
         if isinstance(nm, float) and nm < 0:
             metrics['pe_score'] = 15
             metrics['pe_loss_maker'] = True
-            valuation_components.append(15)
+            val_earnings.append(15)
 
     pb = val.get('pe', {}).get('price_to_book')
     pb_fair = sector_profile.get('pb_fair', 3.5)
@@ -2083,7 +2118,7 @@ def compute_derived_metrics(bucketed: dict, sector: str = None) -> dict:
                                      (pb_fair, 65), (pb_fair * 1.5, 45),
                                      (pb_fair * 2.5, 25), (pb_fair * 4, 10)])
         metrics['pb_score'] = pb_score
-        valuation_components.append(pb_score)
+        val_asset.append(pb_score)
 
     # EV/EBITDA — capital-structure-neutral valuation multiple, complements
     # PE/PB rather than duplicating them (unaffected by leverage/tax/D&A
@@ -2098,7 +2133,7 @@ def compute_derived_metrics(bucketed: dict, sector: str = None) -> dict:
                                                         (ev_ebitda_fair, 65), (ev_ebitda_fair * 1.5, 45),
                                                         (ev_ebitda_fair * 2.5, 25), (ev_ebitda_fair * 4, 10)])
             metrics['ev_ebitda_score'] = ev_ebitda_score
-            valuation_components.append(ev_ebitda_score)
+            val_enterprise.append(ev_ebitda_score)
 
     # EV/Revenue (Price/Sales fallback) — most valuable exactly where PE
     # can't be used at all: loss-makers get a flat pe_score=15 penalty
@@ -2120,14 +2155,26 @@ def compute_derived_metrics(bucketed: dict, sector: str = None) -> dict:
                                           (ps_fair, 65), (ps_fair * 1.5, 45),
                                           (ps_fair * 2.5, 25), (ps_fair * 4, 10)])
             metrics['ps_score'] = ps_score
-            valuation_components.append(ps_score)
+            val_enterprise.append(ps_score)
 
-    valuation_score = round(sum(valuation_components) / len(valuation_components), 1) \
-                      if valuation_components else None
+    valuation_score = theme_average({
+        'val_earnings_theme':   val_earnings,
+        'val_asset_theme':      val_asset,
+        'val_enterprise_theme': val_enterprise,
+    })
     metrics['valuation_score'] = valuation_score
 
     # ── 3. TECHNICAL ──────────────────────────────────────────────────────────
-    technical_components = []
+    # Theme-grouped (v3): 5 of the former 9 flat-averaged components were
+    # momentum-family, making the pillar a de-facto momentum score. RSI-14
+    # and volume-surge are now computed/stored for display but EXCLUDED from
+    # the pillar — they churn daily, and at pillar weights of 0.15–0.25 they
+    # were enough to flip a rating on one day's tape. Beta stays in: its
+    # deliberately narrow score range (30–65) bounds its single-metric theme
+    # to ~±1.5 composite points, and it acts as a stabiliser.
+    tech_trend      = []   # MA position, MA trend strength
+    tech_momentum   = []   # 52W position, 3M return, ATH distance, relative strength
+    tech_volatility = []   # beta
 
     close = price.get('close_price') or price.get('ltp', {}).get('price')
     ma50  = price.get('ma_50d')
@@ -2143,7 +2190,7 @@ def compute_derived_metrics(bucketed: dict, sector: str = None) -> dict:
         elif above_50:                ma_score = 60
         elif not above_50 and not above_200: ma_score = 30
         metrics['ma_score'] = ma_score
-        technical_components.append(ma_score)
+        tech_trend.append(ma_score)
 
         # MA trend strength — continuous magnitude, complementing the binary
         # above/below check above. A stock 2% above its 50DMA and one 25%
@@ -2155,7 +2202,7 @@ def compute_derived_metrics(bucketed: dict, sector: str = None) -> dict:
             ma_strength_score = interp_score(ma50_pct, [(-30, 15), (-10, 35), (0, 50),
                                                          (10, 65), (25, 80), (50, 95)])
             metrics['ma_strength_score'] = ma_strength_score
-            technical_components.append(ma_strength_score)
+            tech_trend.append(ma_strength_score)
 
     # 52-week position: (price - 52w_low) / (52w_high - 52w_low)
     w52_high = price.get('52_week', {}).get('high')
@@ -2163,23 +2210,31 @@ def compute_derived_metrics(bucketed: dict, sector: str = None) -> dict:
     if close and w52_high and w52_low and (w52_high - w52_low) > 0:
         position = (close - w52_low) / (w52_high - w52_low)
         metrics['week52_position'] = round(position, 4)
-        pos_score = round(position * 100)
+        # v3: floored/capped like every other component. Raw position*100
+        # gave a stock at its 52W low a score of 0 while no other metric
+        # floors below 10 — it punched above its weight in the average.
+        pos_score = interp_score(position * 100, [(0, 15), (25, 35), (50, 55),
+                                                  (75, 75), (100, 95)])
         metrics['week52_score'] = pos_score
-        technical_components.append(pos_score)
+        tech_momentum.append(pos_score)
 
     # Momentum: 3-month return from ohlcv_daily (newest first).
     # ~63 trading days back; tolerate shorter history (min 40 days).
     ohlcv = price.get('ohlcv_daily')
-    if isinstance(ohlcv, list) and len(ohlcv) >= 40 and close:
+    if isinstance(ohlcv, list) and len(ohlcv) >= 40:
         idx = min(62, len(ohlcv) - 1)
         base = ohlcv[idx].get('Close')
-        if base and base > 0:
-            ret_3m = (close - base) / base * 100
+        # v3: both ends from the same series — mixing live LTP with a
+        # bar-close base skewed the return by however stale the OHLCV
+        # snapshot was relative to the quote.
+        curr = ohlcv[0].get('Close')
+        if base and base > 0 and isinstance(curr, (int, float)) and curr > 0:
+            ret_3m = (curr - base) / base * 100
             metrics['return_3m_pct'] = round(ret_3m, 2)
             mom_score = interp_score(ret_3m, [(-30, 10), (-15, 30), (0, 50),
                                               (15, 75), (30, 90), (50, 100)])
             metrics['momentum_score'] = mom_score
-            technical_components.append(mom_score)
+            tech_momentum.append(mom_score)
 
     # RSI-14 — classic overbought/oversold oscillator, only possible now
     # that daily OHLCV is restored. Hump-shaped, not monotonic: mild
@@ -2187,19 +2242,26 @@ def compute_derived_metrics(bucketed: dict, sector: str = None) -> dict:
     # neutral mid-range is moderate, overbought (>70) is scored as caution
     # rather than strength.
     if isinstance(ohlcv, list) and len(ohlcv) >= 15:
-        closes = [b.get('Close') for b in ohlcv[:15]]
+        n_bars = min(len(ohlcv), 60)
+        closes = [b.get('Close') for b in ohlcv[:n_bars]]
         if all(isinstance(c, (int, float)) for c in closes):
-            diffs = [closes[i] - closes[i + 1] for i in range(14)]
-            gains = [d for d in diffs if d > 0]
-            losses = [-d for d in diffs if d < 0]
-            avg_gain = sum(gains) / 14
-            avg_loss = sum(losses) / 14
+            # v3: Wilder smoothing — the previous simple 14-day average is
+            # noticeably noisier than the standard recursive form. Seeded on
+            # the oldest 14 diffs, then smoothed across the rest of the
+            # window (up to 60 bars).
+            closes = closes[::-1]  # oldest → newest
+            diffs = [closes[i + 1] - closes[i] for i in range(len(closes) - 1)]
+            avg_gain = sum(d for d in diffs[:14] if d > 0) / 14
+            avg_loss = sum(-d for d in diffs[:14] if d < 0) / 14
+            for d in diffs[14:]:
+                avg_gain = (avg_gain * 13 + max(d, 0)) / 14
+                avg_loss = (avg_loss * 13 + max(-d, 0)) / 14
             rsi = 100.0 if avg_loss == 0 else 100 - 100 / (1 + avg_gain / avg_loss)
             metrics['rsi_14'] = round(rsi, 1)
             rsi_score = interp_score(rsi, [(20, 60), (30, 70), (45, 60),
                                            (55, 55), (70, 45), (85, 25)])
+            # v3: display-only fast signal — stored, NOT in the pillar.
             metrics['rsi_score'] = rsi_score
-            technical_components.append(rsi_score)
 
     # All-Time-High distance — a different, sometimes more revealing
     # reference than 52-week high. A stock can sit near its 52W high while
@@ -2213,7 +2275,7 @@ def compute_derived_metrics(bucketed: dict, sector: str = None) -> dict:
         ath_score = interp_score(ath_dist_pct, [(-70, 20), (-40, 35), (-20, 50),
                                                  (-10, 65), (-3, 80), (0, 95)])
         metrics['ath_score'] = ath_score
-        technical_components.append(ath_score)
+        tech_momentum.append(ath_score)
 
     # Beta — mild preference for lower volatility. Deliberately gentle
     # (narrow score range): beta isn't cleanly "good/bad" the way the other
@@ -2225,7 +2287,7 @@ def compute_derived_metrics(bucketed: dict, sector: str = None) -> dict:
         beta_score = interp_score(beta, [(0.3, 65), (0.7, 60), (1.0, 55),
                                           (1.5, 45), (2.5, 30)])
         metrics['beta_score'] = beta_score
-        technical_components.append(beta_score)
+        tech_volatility.append(beta_score)
 
     # Volume surge — direction-conditioned, not scored as inherently
     # good/bad on its own. Elevated volume on an up day is bullish
@@ -2244,8 +2306,8 @@ def compute_derived_metrics(bucketed: dict, sector: str = None) -> dict:
             vol_score = round(max(10, min(95, raw_vol_score)))
         else:
             vol_score = 50
+        # v3: display-only fast signal — stored, NOT in the pillar.
         metrics['volume_score'] = vol_score
-        technical_components.append(vol_score)
 
     # Relative strength vs index — excess/lagging return vs benchmark over
     # the same 52-week window. Distinct from week52_score (absolute
@@ -2259,14 +2321,23 @@ def compute_derived_metrics(bucketed: dict, sector: str = None) -> dict:
         rel_score = interp_score(relative_strength_pp, [(-30, 20), (-10, 35), (0, 50),
                                                           (10, 65), (30, 80), (60, 95)])
         metrics['relative_strength_score'] = rel_score
-        technical_components.append(rel_score)
+        tech_momentum.append(rel_score)
 
-    technical_score = round(sum(technical_components) / len(technical_components), 1) \
-                      if technical_components else None
+    technical_score = theme_average({
+        'tech_trend_theme':      tech_trend,
+        'tech_momentum_theme':   tech_momentum,
+        'tech_volatility_theme': tech_volatility,
+    })
     metrics['technical_score'] = technical_score
 
     # ── 4. SENTIMENT: analyst signal + smart-money flows (hasData) ────────────
-    sentiment_components = []
+    # Theme-grouped (v3): previously flat-averaged, so when the quarterly AI
+    # guidance file existed its 4 components could carry ~half the pillar
+    # from one stale source (and the AI recommendation is partially circular
+    # with our own inputs). Analyst / ownership / AI now weigh equally.
+    sent_analyst   = []   # analyst rating+upside composite, target-spread agreement
+    sent_ownership = []   # promoter+institutional flows, holding levels, shareholder count
+    sent_ai        = []   # AI qualitative dims, mgmt confidence, mgmt tone, AI recommendation
 
     # 4a. Analyst component
     analyst_rating = websignals.get('analyst_rating_score')
@@ -2300,7 +2371,7 @@ def compute_derived_metrics(bucketed: dict, sector: str = None) -> dict:
             analyst_component = round(analyst_component * confidence + 50 * (1 - confidence))
             metrics['analyst_count'] = analyst_count
         metrics['analyst_component'] = analyst_component
-        sentiment_components.append(analyst_component)
+        sent_analyst.append(analyst_component)
 
     # Analyst disagreement: target high/low spread relative to mean. Wide
     # spread means analysts substantially disagree about fair value — a
@@ -2314,7 +2385,7 @@ def compute_derived_metrics(bucketed: dict, sector: str = None) -> dict:
         spread_score = interp_score(spread_pct, [(10, 75), (25, 60), (50, 45),
                                                   (100, 30), (150, 15)])
         metrics['analyst_agreement_score'] = spread_score
-        sentiment_components.append(spread_score)
+        sent_analyst.append(spread_score)
 
     # 4b. Ownership flows: promoter + institutional (FII+DII) QoQ change in pp
     pattern = bucketed.get('company_details', {}) \
@@ -2349,7 +2420,7 @@ def compute_derived_metrics(bucketed: dict, sector: str = None) -> dict:
     if ownership_parts:
         ownership_score = round(sum(ownership_parts) / len(ownership_parts))
         metrics['ownership_score'] = ownership_score
-        sentiment_components.append(ownership_score)
+        sent_ownership.append(ownership_score)
 
     # Institutional/insider holding LEVEL — distinct from the QoQ change
     # above. A stock with 45% institutional ownership and one with 5% carry
@@ -2365,7 +2436,7 @@ def compute_derived_metrics(bucketed: dict, sector: str = None) -> dict:
         inst_level_score = interp_score(inst_pct, [(5, 30), (15, 50), (30, 65),
                                                      (50, 80), (70, 85), (90, 70)])
         metrics['institutional_holding_score'] = inst_level_score
-        sentiment_components.append(inst_level_score)
+        sent_ownership.append(inst_level_score)
 
     insider_level = ownership.get('insider_holding_pct')
     if isinstance(insider_level, (int, float)):
@@ -2374,7 +2445,7 @@ def compute_derived_metrics(bucketed: dict, sector: str = None) -> dict:
         insider_level_score = interp_score(insider_pct, [(0, 45), (10, 60), (30, 75),
                                                            (50, 80), (75, 70), (95, 55)])
         metrics['insider_holding_score'] = insider_level_score
-        sentiment_components.append(insider_level_score)
+        sent_ownership.append(insider_level_score)
 
     # Shareholder count trend — growing retail participation, a weak but
     # real visibility/interest signal. Same QoQ-style calc pattern as
@@ -2392,7 +2463,7 @@ def compute_derived_metrics(bucketed: dict, sector: str = None) -> dict:
                 shr_score = interp_score(shr_growth_pct, [(-20, 40), (0, 50), (10, 60),
                                                             (30, 70), (60, 80)])
                 metrics['shareholder_growth_score'] = shr_score
-                sentiment_components.append(shr_score)
+                sent_ownership.append(shr_score)
 
     # AI qualitative insights (guidance.json, refreshed quarterly/monthly —
     # NOT real-time). Deliberately excludes the AI's own 'valuation' signal:
@@ -2417,7 +2488,7 @@ def compute_derived_metrics(bucketed: dict, sector: str = None) -> dict:
         ai_qual_score = round(sum(ai_scores) / len(ai_scores))
         metrics['ai_qualitative_score'] = ai_qual_score
         metrics['ai_qualitative_dims_used'] = len(ai_scores)
-        sentiment_components.append(ai_qual_score)
+        sent_ai.append(ai_qual_score)
 
     # Management confidence (guidance.json) — same source, same staleness
     # caveat, scored separately since it's a distinct signal (how the AI
@@ -2429,7 +2500,7 @@ def compute_derived_metrics(bucketed: dict, sector: str = None) -> dict:
         conf_score = conf_map.get(mgmt_confidence.strip().lower())
         if conf_score is not None:
             metrics['management_confidence_score'] = conf_score
-            sentiment_components.append(conf_score)
+            sent_ai.append(conf_score)
 
     # Management tone (guidance.json) — distinct from confidence above.
     # Confidence is about credibility/track record; tone is specifically
@@ -2441,7 +2512,7 @@ def compute_derived_metrics(bucketed: dict, sector: str = None) -> dict:
         tone_score = tone_map.get(mgmt_tone.strip().lower())
         if tone_score is not None:
             metrics['management_tone_score'] = tone_score
-            sentiment_components.append(tone_score)
+            sent_ai.append(tone_score)
 
     # AI's own standalone recommendation — an independent cross-check
     # rating from a separate research process, not derived from our own
@@ -2454,10 +2525,13 @@ def compute_derived_metrics(bucketed: dict, sector: str = None) -> dict:
         if rec_score is not None:
             metrics['ai_recommendation'] = ai_recommendation.strip().upper()
             metrics['ai_recommendation_score'] = rec_score
-            sentiment_components.append(rec_score)
+            sent_ai.append(rec_score)
 
-    sentiment_score = round(sum(sentiment_components) / len(sentiment_components)) \
-                      if sentiment_components else None
+    sentiment_score = theme_average({
+        'sent_analyst_theme':   sent_analyst,
+        'sent_ownership_theme': sent_ownership,
+        'sent_ai_theme':        sent_ai,
+    })
     metrics['sentiment_score'] = sentiment_score
     metrics['sentiment_has_data'] = sentiment_score is not None
 
@@ -2480,11 +2554,15 @@ def compute_derived_metrics(bucketed: dict, sector: str = None) -> dict:
         metrics['pillars_used'] = 0
 
     score = metrics['composite_score']
+    # v3 bands — recentred so the system's neutral point (~55: every input
+    # sitting at its sector fair value / neutral anchor) lands mid-HOLD
+    # instead of riding the old 55 HOLD/SELL boundary, and BUY/SELL widened
+    # from 6/7-point slivers so single-component noise can't flip a rating.
     if score is None:         metrics['rating'] = 'NO DATA'
     elif score >= 73:         metrics['rating'] = 'STRONG BUY'
-    elif score >= 67:         metrics['rating'] = 'BUY'
-    elif score >= 55:         metrics['rating'] = 'HOLD'
-    elif score >= 48:         metrics['rating'] = 'SELL'
+    elif score >= 66:         metrics['rating'] = 'BUY'
+    elif score >= 52:         metrics['rating'] = 'HOLD'
+    elif score >= 45:         metrics['rating'] = 'SELL'
     else:                     metrics['rating'] = 'STRONG SELL'
 
     metrics['sector_weights'] = {
@@ -3790,7 +3868,30 @@ def _audit(output: dict, log) -> bool:
     chk("R. Component coverage floors", not r_issues,
         str(r_issues[:5]) if r_issues else "")
 
-    total_checks = 18  # A through R
+    # S (advisory, non-blocking). Sector PE anchors vs observed medians.
+    # Static pe_fair anchors drift with the rate cycle; a badly-off anchor
+    # floors or inflates the whole valuation pillar for every name in the
+    # sector (root cause of the CDSL/HDFCLIFE STRONG SELLs). Advisory only —
+    # anchors are deliberately NOT fitted to current medians (euphoric
+    # sectors like Defence would poison a fitted anchor), so drift is
+    # logged for review, never failed. Industry overrides mean a few names
+    # use a different effective anchor; this is a coarse sector-level read.
+    by_sector = {}
+    for t, cm in cms.items():
+        pe, sec = cm.get('pe_ratio'), cm.get('sector')
+        if isinstance(pe, (int, float)) and 0 < pe < 200 and sec in SECTOR_PROFILES:
+            by_sector.setdefault(sec, []).append(pe)
+    for sec in sorted(by_sector):
+        pes = sorted(by_sector[sec])
+        if len(pes) < 5:
+            continue  # too few names for a meaningful median
+        median = pes[len(pes) // 2]
+        anchor = SECTOR_PROFILES[sec].get('pe_fair')
+        if anchor and abs(median - anchor) / anchor > 0.40:
+            log.info(f"  AUDIT ℹ S. {sec}: median PE {median:.0f} vs pe_fair "
+                     f"{anchor} ({(median - anchor) / anchor:+.0%}) — review anchor")
+
+    total_checks = 18  # A through R (S is advisory)
     log.info(f"── Audit: {total_checks - len(failures)}/{total_checks} passed"
              + (f" | {len(failures)} failed: {failures}" if failures else " | all clear"))
 

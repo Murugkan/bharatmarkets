@@ -1572,7 +1572,9 @@ function sigScoreColor(s) {
     return s>=65?'#00ff88':s>=55?'#69f0ae':s>=46?'#ffea00':s>=37?'#ff9100':'#ff4d6d';
 }
 function sigRating(s) {
-    return s>=73?'STRONG BUY':s>=67?'BUY':s>=55?'HOLD':s>=48?'SELL':'STRONG SELL';
+    // v3 bands — MUST match market_data.py compute_derived_metrics().
+    // Recentred so neutral (~55) sits mid-HOLD; BUY/SELL widened.
+    return s>=73?'STRONG BUY':s>=66?'BUY':s>=52?'HOLD':s>=45?'SELL':'STRONG SELL';
 }
 
 // ---------- SECTOR MEDIANS ----------
@@ -1631,9 +1633,11 @@ function sigTechnicalSub(cm) {
         w52:  {s:cm.week52_score??0,      hasData:cm.week52_score!=null,      label:'52W Position',  val:cm.week52_position!=null?(cm.week52_position*100).toFixed(0)+'%':'N/A'},
         ath:  {s:cm.ath_score??0,         hasData:cm.ath_score!=null,         label:'ATH Distance',  val:sigPipeFmt(cm.ath_distance_pct,1,'%')},
         mom:  {s:cm.momentum_score??0,    hasData:cm.momentum_score!=null,    label:'3M Momentum',   val:sigPipeFmt(cm.return_3m_pct,1,'%')},
-        rsi:  {s:cm.rsi_score??0,         hasData:cm.rsi_score!=null,         label:'RSI (14)',      val:cm.rsi_14!=null?cm.rsi_14.toFixed(1):'N/A'},
+        // v3: RSI + Volume are display-only fast signals — computed and
+        // stored by the pipeline but EXCLUDED from technical_score.
+        rsi:  {s:cm.rsi_score??0,         hasData:cm.rsi_score!=null,         excl:true, label:'RSI (14)',      val:cm.rsi_14!=null?cm.rsi_14.toFixed(1):'N/A'},
         beta: {s:cm.beta_score??0,        hasData:cm.beta_score!=null,        label:'Beta',          val:cm.beta!=null?'β '+cm.beta.toFixed(2):'N/A'},
-        vol:  {s:cm.volume_score??0,      hasData:cm.volume_score!=null,      label:'Volume Surge',  val:cm.volume_ratio!=null?cm.volume_ratio.toFixed(1)+'x avg':'N/A'},
+        vol:  {s:cm.volume_score??0,      hasData:cm.volume_score!=null,      excl:true, label:'Volume Surge',  val:cm.volume_ratio!=null?cm.volume_ratio.toFixed(1)+'x avg':'N/A'},
         rel:  {s:cm.relative_strength_score??0, hasData:cm.relative_strength_score!=null, label:'vs Index (52W)', val:cm.relative_strength_pp!=null?sigPipeFmt(cm.relative_strength_pp,1,'pp'):'N/A'},
     };
 }
@@ -1737,8 +1741,10 @@ function sigPillarCard(key, label, icon, pillar, color) {
     const openKey=key;
     const isOpen=SIG_OPEN_PILLARS[openKey];
     const allSubs=Object.entries(pillar.sub);
-    const validCount=allSubs.filter(([,v])=>v.hasData).length;
-    const totalCount=allSubs.length;
+    // v3: excl (display-only) subs don't count toward pillar coverage —
+    // they're shown for context but aren't inside the pillar score.
+    const validCount=allSubs.filter(([,v])=>v.hasData&&!v.excl).length;
+    const totalCount=allSubs.filter(([,v])=>!v.excl).length;
     const subs=allSubs.map(([k,v])=>{
         if(!v.hasData) return `
         <div class="sig-sub-row" style="opacity:0.3">
@@ -1747,9 +1753,10 @@ function sigPillarCard(key, label, icon, pillar, color) {
             <span class="sig-sub-score">—</span>
             <span class="sig-sub-val">N/A</span>
         </div>`;
+        const exclTag=v.excl?`<span style="font-size:6px;color:#888;letter-spacing:0.05em"> · EXCL</span>`:'';
         return `
-        <div class="sig-sub-row">
-            <span class="sig-sub-label">${v.label}</span>
+        <div class="sig-sub-row"${v.excl?' style="opacity:0.55"':''}>
+            <span class="sig-sub-label">${v.label}${exclTag}</span>
             <div class="sig-sub-bar"><div class="sig-sub-fill" style="width:${v.s}%;background:${sigScoreColor(v.s)}"></div></div>
             <span class="sig-sub-score">${v.s}</span>
             <span class="sig-sub-val">${v.val}</span>
@@ -1818,7 +1825,7 @@ function sigRenderDetail(ticker) {
                 </div>
             </div>
             <div style="text-align:right">
-                <div style="font-size:28px;font-weight:800;color:${sig.ratingColor}">${sig.comp??'—'}<span style="font-size:10px;font-weight:400;color:#bbb;margin-left:4px">(${['F','T','V','S'].reduce((a,p)=>a+Object.values(sig[p].sub).filter(x=>x.hasData).length,0)}/${['F','T','V','S'].reduce((a,p)=>a+Object.values(sig[p].sub).length,0)})</span></div>
+                <div style="font-size:28px;font-weight:800;color:${sig.ratingColor}">${sig.comp??'—'}<span style="font-size:10px;font-weight:400;color:#bbb;margin-left:4px">(${['F','T','V','S'].reduce((a,p)=>a+Object.values(sig[p].sub).filter(x=>x.hasData&&!x.excl).length,0)}/${['F','T','V','S'].reduce((a,p)=>a+Object.values(sig[p].sub).filter(x=>!x.excl).length,0)})</span></div>
                 <div style="font-size:10px;font-weight:800;color:${sig.ratingColor};letter-spacing:0.06em">${sig.rating||'NO DATA'}</div>
             </div>
         </div>
