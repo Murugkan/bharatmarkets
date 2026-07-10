@@ -788,19 +788,61 @@ INDUSTRY_OVERRIDES = {
     "insurance":                        {"pe_fair": 32, "pb_fair": 5.0},   # general insurers
     "insurance brokers":                {"pe_fair": 35, "pb_fair": 6.0},
     "financial data & stock exchanges": {"pe_fair": 45, "pb_fair": 11.0},
+    # v3.1: textile family — GICS puts textiles under Consumer Discretionary,
+    # but the CD anchors (pe_fair 40 / pb_fair 6) are calibrated for branded
+    # consumer names. Commodity textile manufacturers (spinning, weaving,
+    # home textiles) have Materials-like economics and trade 10–20x / 1–3x
+    # book; scoring them against 40/6 inflates the whole valuation pillar.
+    # Garment exporters/apparel manufacturers sit in between. Branded apparel
+    # retail correctly stays on the CD default — no override.
+    # Substring matching: 'textile' catches Textiles / Textiles - Cotton /
+    # Textile Manufacturing / Home Textiles etc.
+    "textile":               {"pe_fair": 18, "pb_fair": 2.5,
+                              "ev_ebitda_fair": 9,  "ps_fair": 1.0,
+                              "_sectors": ["Consumer Discretionary"]},
+    "apparel manufacturing": {"pe_fair": 30, "pb_fair": 5.0,
+                              "ev_ebitda_fair": 13, "ps_fair": 1.8,
+                              "_sectors": ["Consumer Discretionary"]},
+    "readymade garments":    {"pe_fair": 30, "pb_fair": 5.0,
+                              "ev_ebitda_fair": 13, "ps_fair": 1.8,
+                              "_sectors": ["Consumer Discretionary"]},
 }
 
-def apply_industry_override(sector_profile: dict, industry: str) -> dict:
+def apply_industry_override(sector_profile: dict, industry: str,
+                            sector: str = None) -> dict:
     """Layer an industry-level override on top of the sector profile, if one
     exists for this industry (case-insensitive). Returns a new dict — never
-    mutates the shared SECTOR_PROFILES entry."""
+    mutates the shared SECTOR_PROFILES entry.
+    v3.1: exact match first, then longest-key substring match — so a single
+    'textile' key catches 'Textiles', 'Textiles - Cotton', 'Textile
+    Manufacturing', 'Home Textiles' etc. without enumerating every variant.
+    Longest-first ordering guarantees 'insurance brokers' wins over
+    'insurance' when both could match. Each override may declare a
+    '_sectors' list scoping it to specific resolved sectors — this stops
+    cross-sector substring false positives (e.g. LMW 'Industrial Machinery
+    And Textile Machinery' in Industrials must NOT get the commodity
+    textile anchors meant for Consumer Discretionary names)."""
     if not industry:
         return sector_profile
-    override = INDUSTRY_OVERRIDES.get(industry.strip().lower())
+
+    def eligible(ov):
+        scope = ov.get('_sectors')
+        return not scope or sector in scope
+
+    ind = industry.strip().lower()
+    override = INDUSTRY_OVERRIDES.get(ind)
+    if override is not None and not eligible(override):
+        override = None
+    if override is None:
+        for key in sorted(INDUSTRY_OVERRIDES, key=len, reverse=True):
+            if key in ind and eligible(INDUSTRY_OVERRIDES[key]):
+                override = INDUSTRY_OVERRIDES[key]
+                break
     if not override:
         return sector_profile
     merged = dict(sector_profile)
     merged.update(override)
+    merged.pop('_sectors', None)
     return merged
 
 ALL_BUCKETS = [
@@ -1666,7 +1708,8 @@ def compute_derived_metrics(bucketed: dict, sector: str = None) -> dict:
         else:
             sector_source = 'fallback'
     industry = bucketed.get("company_details", {}).get("industry")
-    sector_profile = apply_industry_override(SECTOR_PROFILES[sector], industry)
+    sector_profile = apply_industry_override(SECTOR_PROFILES[sector], industry,
+                                             sector=sector)
 
     metrics = {"sector": sector, "industry": industry,
                "sector_source": sector_source}
