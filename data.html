@@ -1508,6 +1508,52 @@
         }
     }
 
+    function latestCompletedQuarter() {
+        // Latest COMPLETED Indian fiscal quarter (Q1 Apr-Jun ... Q4 Jan-Mar)
+        var d = new Date(), m = d.getMonth() + 1, y = d.getFullYear();
+        if (m <= 3)  return 'Q3 FY' + String(y % 100);
+        if (m <= 6)  return 'Q4 FY' + String(y % 100);
+        if (m <= 9)  return 'Q1 FY' + String((y + 1) % 100);
+        return 'Q2 FY' + String((y + 1) % 100);
+    }
+
+    function promptContext(ticker, stock) {
+        var masterStock = masterData.find(s => s.ticker === ticker);
+        var secOf = function(s) {
+            if (!s) return null;
+            return (s.derived_metrics && s.derived_metrics.calculated_metrics
+                    && s.derived_metrics.calculated_metrics.sector)
+                || (s.company_details && s.company_details.sector) || null;
+        };
+        var sector = (stock.company_details && stock.company_details.sector)
+            || stock.sector || secOf(masterStock) || 'not provided';
+        var cmp = masterStock && masterStock.price && masterStock.price.close_price;
+        var dateStr = new Date().toLocaleDateString('en-IN',
+            { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric' });
+        var cmpLine = (cmp != null)
+            ? ('\u20B9' + cmp + ' as of ' + dateStr)
+            : 'not provided \u2014 state the price basis you use in data_quality';
+        // Peers: same resolved sector, top 4 by market cap
+        var peers = 'not provided \u2014 name your own peer set in peer_set_used';
+        var peerSector = secOf(masterStock) || sector;
+        if (peerSector && peerSector !== 'Other' && peerSector !== 'not provided' && masterData.length) {
+            var list = masterData
+                .filter(function(s) { return s.ticker !== ticker && secOf(s) === peerSector; })
+                .map(function(s) {
+                    var mc = (s.valuation && s.valuation.market && s.valuation.market.market_cap) || 0;
+                    return { t: s.ticker, mc: mc };
+                })
+                .sort(function(a, b) { return b.mc - a.mc; })
+                .slice(0, 4).map(function(p) { return p.t; });
+            if (list.length) peers = list.join(', ');
+        }
+        var holdings = stock.holdings || [];
+        var qty = holdings.reduce(function(s, h) { return s + (parseFloat(h.qty) || 0); }, 0);
+        var holding = qty > 0 ? 'yes (in portfolio)' : 'no (watchlist / fresh money)';
+        return { sector: sector, cmpLine: cmpLine, peers: peers, holding: holding,
+                 quarter: latestCompletedQuarter() };
+    }
+
     function generateGuidancePrompt(ticker) {
         var stock = symbolsData.find(s => s.ticker === ticker) || masterData.find(s => s.ticker === ticker);
         if (!stock) {
@@ -1517,58 +1563,77 @@
         
         var name = stock.name || ticker;
         
+        var ctx = promptContext(ticker, stock);
+
         var prompt = `TICKER: ${ticker}
 COMPANY: ${name}
+SECTOR: ${ctx.sector}
+CURRENT PRICE: ${ctx.cmpLine}
+LATEST QUARTER: ${ctx.quarter}
 
-You are a senior equity analyst. Extract guidance from latest earnings call. Provide COMPLETE fundamental analysis.
+You are a senior equity analyst. Extract guidance from the LATEST earnings call. Provide COMPLETE fundamental analysis.
 
-CRITICAL: Be SPECIFIC with actual numbers. Collect ALL 25 fields below.
+CRITICAL: Be SPECIFIC with actual numbers. Fill ALL fields in the schema below.
+- Tag every numeric field as (Actual Qx FYxx) or (Guided FYxx). Never present actuals as guidance.
+- If the latest available call is older than ${ctx.quarter}, extract it anyway and state that explicitly in data_quality.
+
+SECTOR ADAPTATION - if the company is a lender/NBFC/bank, reinterpret fields:
+- financial.revenue -> NII/total income + AUM (Rs Cr, % YoY)
+- financial.growth -> AUM & disbursement growth guidance
+- financial.margins -> NIM/spread, cost-to-income, credit cost (bps)
+- financial.capex -> branch additions + tech spend
+- deals_and_pipeline.order_book -> disbursements + sanctions pipeline
+- operations.raw_materials -> cost of borrowings: incremental CoB, borrowing mix, rate transmission
+- operations.working_capital -> asset quality: GNPA/NNPA %, collection efficiency, Stage-2/3
+- capital_allocation.debt_management -> leverage (D/E), CRAR %, ALM profile
+- customers -> borrower profile: ticket size, salaried/self-employed mix, LTV
+Similar remapping for pharma (ANDA pipeline, US price erosion) and real estate (pre-sales, collections) where fields would otherwise be category errors. Mark remapped fields "Lender-remapped:" etc.
 
 {
   "ticker": "${ticker}",
   "guidance": {
-    "quarter": "Q4 FY26",
-    
+    "quarter": "${ctx.quarter}",
+
     "financial": {
       "revenue": "SPECIFIC target with growth rate",
       "growth": "SPECIFIC growth target",
       "margins": "SPECIFIC operating & net margins",
       "capex": "SPECIFIC capex amount & purpose"
     },
-    
+
     "business": {
       "expansion": "New capacity/market with timeline",
       "products": "Product portfolio mix",
       "geography": "Geographic revenue breakdown"
     },
-    
+
     "management": {
       "tone": "'Positive' or 'Cautious' or 'Defensive'",
       "confidence": "'High' or 'Medium' or 'Low'",
       "commitments": ["commitment 1", "commitment 2"],
-      "risks": ["risk - Severity", "risk - Severity"]
+      "risks": ["risk (High|Medium|Low)", "risk (High|Medium|Low)"]
     },
-    
-    "summary": "One sentence with top 2 numbers",
-    
+
+    "summary": "One sentence, NUMBERS ONLY: top 2 actuals + top guided number",
+
     "deals_and_pipeline": {
-      "deal_wins": ["Deal 1: ₹X Cr, client type, when", "Deal 2: ₹Y Cr, client type, when"],
+      "deal_wins": ["Deal 1: Rs X Cr, client type, when", "Deal 2: Rs Y Cr, client type, when"],
       "order_book": {
-        "total_value": "₹X Cr total",
+        "total_value": "Rs X Cr total",
         "execution_timeline": "X% in next Y months; Z% in Y-24 months",
-        "by_segment": "Segment 1 ₹X Cr | Segment 2 ₹Y Cr"
+        "by_segment": "Segment 1 Rs X Cr | Segment 2 Rs Y Cr"
       },
-      "sales_pipeline": "₹X Cr active pipeline; X% conversion expected",
-      "deal_pipeline_value": "₹X Cr in advanced negotiations"
+      "sales_pipeline": "Rs X Cr active pipeline; X% conversion expected",
+      "deal_pipeline_value": "Rs X Cr in advanced negotiations"
     },
-    
+
     "customers": {
       "customer_additions": ["New customer 1", "New customer 2"],
-      "customer_losses": ["Lost customer with ₹X Cr impact"],
+      "customer_losses": ["Lost customer with Rs X Cr impact"],
       "customer_concentration": "Top 5 customers = X% revenue; Top 10 = Y%",
       "net_assessment": "Net positive/negative; consolidation or diversification trend"
     },
-    
+
     "segments": {
       "revenue_by_segment": {
         "Segment 1": "X% revenue | +Y% YoY growth",
@@ -1577,17 +1642,17 @@ CRITICAL: Be SPECIFIC with actual numbers. Collect ALL 25 fields below.
       },
       "segment_outlook": "Which segments accelerating vs declining"
     },
-    
+
     "geography": {
       "revenue_mix": {"Region 1": "X%", "Region 2": "Y%", "Region 3": "Z%"},
       "expansion_plans": "New countries/regions targeted with timeline"
     },
-    
+
     "operations": {
       "headcount": {
         "current_strength": "X employees",
         "hiring_plan": "Add Y engineers/staff",
-        "utilization_target": "Current X% → Target Y%",
+        "utilization_target": "Current X% -> Target Y%",
         "attrition_rate": "X% YoY vs industry Y%"
       },
       "raw_materials": {
@@ -1599,26 +1664,26 @@ CRITICAL: Be SPECIFIC with actual numbers. Collect ALL 25 fields below.
         "receivables_dso": "X days (was Y days)",
         "inventory_dio": "X days (was Y days)",
         "cash_conversion_cycle": "X days (was Y days)",
-        "cash_release_potential": "₹X Cr WC release expected"
+        "cash_release_potential": "Rs X Cr WC release expected"
       }
     },
-    
+
     "capital_allocation": {
       "capex_detailed": {
-        "total": "₹X Cr",
-        "automation": "₹X Cr",
-        "it_infrastructure": "₹X Cr",
-        "facility_expansion": "₹X Cr",
+        "total": "Rs X Cr",
+        "automation": "Rs X Cr",
+        "it_infrastructure": "Rs X Cr",
+        "facility_expansion": "Rs X Cr",
         "funding_source": "X% operations, Y% debt, Z% equity"
       },
       "debt_management": {
-        "repayment_plan": "₹X Cr debt repayment",
+        "repayment_plan": "Rs X Cr debt repayment",
         "net_debt_target": "Target X.X x EBITDA (from Y.Y x)",
         "timeline": "Achieve by end of FY27/FY28",
-        "current_net_debt": "₹X Cr"
+        "current_net_debt": "Rs X Cr"
       }
     },
-    
+
     "competitive_position": {
       "market_share": {
         "by_segment": "Segment 1: X% (gaining/losing)",
@@ -1626,11 +1691,11 @@ CRITICAL: Be SPECIFIC with actual numbers. Collect ALL 25 fields below.
       },
       "pricing_strategy": "Pricing power; price increase acceptance; vs peers",
       "competitive_advantages": ["Advantage 1", "Advantage 2", "Advantage 3"],
-      "competitive_threats": ["Threat 1 (Severity)", "Threat 2 (Severity)", "Threat 3 (Severity)"]
+      "competitive_threats": ["Threat 1 (High|Medium|Low)", "Threat 2 (High|Medium|Low)", "Threat 3 (High|Medium|Low)"]
     },
-    
-    "investor_verdict": "One sentence most important takeaway",
-    
+
+    "investor_verdict": "One sentence DECISION-RELEVANT takeaway (not a restatement of summary)",
+
     "analyst_dimensions": {
       "valuation_context": "How does guidance compare to valuation",
       "consensus_gap": "Guidance vs street consensus vs previous",
@@ -1640,18 +1705,25 @@ CRITICAL: Be SPECIFIC with actual numbers. Collect ALL 25 fields below.
       "order_book_health": "Order book value + execution timeline + risk",
       "risk_opportunity_scorecard": "Risks vs opportunities with probability & impact",
       "management_credibility": "Transparent; conservative or aggressive setter",
-      "forward_estimate_impact": "How guidance changes FY26/FY27 EPS estimates",
+      "forward_estimate_impact": "How guidance changes current/next FY EPS estimates",
       "quarterly_trajectory": "Revenue/margin path; catalyst timing"
+    },
+
+    "data_quality": {
+      "source": "transcript direct | secondary coverage | filings only",
+      "call_date": "DD Mon YYYY",
+      "fields_not_found": ["data not found that limited extraction"],
+      "conflicting_sources": ["field: source A says X, source B says Y"]
     }
   }
 }
 
 CRITICAL RULES:
-1. Return ONLY JSON
-2. ALL 25 fields required
-3. Use actual numbers from call
-4. Do NOT fabricate data - use "Not disclosed" if missing
-5. Be brutally honest on risks & opportunities`;
+1. Return ONLY parseable JSON: double quotes, no trailing commas, no markdown fences, no comments; arrays never null (use []); keys never renamed or omitted
+2. ALL fields in the schema required; use "Not disclosed" or "Not applicable" where data is genuinely missing
+3. All amounts in Rs Cr only - never mix lakh/million/crore; if a source magnitude conflicts with market cap, flag it in data_quality, do not propagate it
+4. Every number must trace to the call, a filing, or dated coverage of it. Do NOT fill gaps from general pre-training knowledge of the company. "Not disclosed" beats a plausible stale number
+5. Severity enums exactly High|Medium|Low; be brutally honest on risks & opportunities`;
 
         navigator.clipboard.writeText(prompt).then(() => {
             showToast('✅ Guidance prompt copied!');
@@ -1674,87 +1746,110 @@ CRITICAL RULES:
         }
         
         var name = stock.name || ticker;
-        // sector may only be present in masterData (IndexedDB-enriched); fall back if symbolsData entry lacks it
-        var masterStock = masterData.find(s => s.ticker === ticker);
-        var sector = (stock.company_details && stock.company_details.sector)
-            || (masterStock && masterStock.company_details && masterStock.company_details.sector)
-            || 'N/A';
-        
+        var ctx = promptContext(ticker, stock);
+
         var prompt = `TICKER: ${ticker}
 COMPANY: ${name}
-SECTOR: ${sector}
+SECTOR: ${ctx.sector}
+CURRENT PRICE: ${ctx.cmpLine}
+PEERS: ${ctx.peers}
+HOLDING: ${ctx.holding}
 
-You are a senior equity analyst. Provide INVESTMENT THESIS & SECTOR CONTEXT.
+You are a senior equity analyst. Provide an INDEPENDENT INVESTMENT THESIS & SECTOR CONTEXT.
+This is YOUR opinion. Do not restate management guidance as the thesis - guidance may be referenced but must be independently assessed. Horizon: 12 months unless stated.
 
-This is your investment opinion + sector analysis. Company guidance is separate.
+RECOMMENDATION RUBRIC (apply strictly):
+- BUY    = expected 12M total return > +15%
+- HOLD   = expected 12M return between -10% and +15%
+- REDUCE = expected 12M return -10% to -20%, or risk/reward deteriorating; trim
+- EXIT   = structural thesis break or expected return < -20%
+Recommendation must be reconcilable with the signal mix; if signals and recommendation diverge, the thesis must state why.
+
+SECTOR ADAPTATION - if the company is a lender/NBFC/bank, reinterpret dimensions:
+- valuation     -> P/B + RoA/RoE (P/E secondary), vs named peers
+- growth        -> AUM, disbursement/loan growth, quality of growth
+- profitability -> NIM/spread, credit cost, cost-to-income, RoA drivers
+- cash_strength -> CRAR/Tier-I, leverage, ALM profile, cost & mix of borrowings, GNPA/NNPA
+Similar remapping for other non-manufacturing models (pharma: pipeline/US erosion; real estate: pre-sales/collections).
+
+DEFINITIONS:
+- catalyst    = DATED events within 12 months only
+- opportunity = structural/unpriced optionality, no dates
+- sector_name = most specific relevant SUB-SECTOR (e.g. "Affordable Housing Finance", not "Financials"); compare against the named PEERS above, not the GICS bucket
 
 {
   "ticker": "${ticker}",
   "insights": {
-    "recommendation": "'BUY' or 'HOLD' or 'REDUCE' or 'EXIT'",
-    "thesis": "One sentence investment idea with specific reason",
-    "trigger": "Specific event that would change recommendation",
-    
+    "as_of": "date + CMP used",
+    "recommendation": "BUY | HOLD | REDUCE | EXIT",
+    "fair_value_range": "Rs X-Y (basis: multiple x metric)",
+    "expected_12m_return": "X% (incl. dividend)",
+    "thesis": "One sentence investment idea with specific reason (max 40 words)",
+    "upgrade_trigger": "Specific measurable event that raises the recommendation",
+    "downgrade_trigger": "Specific measurable event that lowers the recommendation",
+    "holder_note": "One line: action for existing holders vs fresh money",
+
     "analysis": {
       "valuation": {
-        "metric": "SPECIFIC: P/E, P/B, vs peers, vs Nifty",
-        "assessment": "Cheap/expensive? Why?",
+        "metric": "SPECIFIC: P/E, P/B (or P/B + RoA for lenders), vs each named peer, vs sub-sector median",
+        "assessment": "Cheap/expensive and why (max 2 sentences)",
         "signal": "'Positive' or 'Neutral' or 'Caution'"
       },
-      
       "growth": {
-        "metric": "SPECIFIC: YoY growth, trend, order book",
-        "assessment": "Growth quality and sustainability",
+        "metric": "SPECIFIC: YoY %, trend, AUM/order book as applicable",
+        "assessment": "Quality and sustainability (max 2 sentences)",
         "signal": "'Positive' or 'Neutral' or 'Caution'"
       },
-      
       "profitability": {
-        "metric": "SPECIFIC: OPM, PAT margin trends",
-        "assessment": "Margin quality and drivers",
+        "metric": "SPECIFIC: OPM/PAT margin (or NIM/spread/credit cost for lenders) with trend",
+        "assessment": "Drivers and durability (max 2 sentences)",
         "signal": "'Positive' or 'Neutral' or 'Caution'"
       },
-      
       "cash_strength": {
-        "metric": "SPECIFIC: Debt, FCF, cash, leverage",
-        "assessment": "Balance sheet quality",
+        "metric": "SPECIFIC: debt/FCF/cash (or CRAR/ALM/CoB for lenders)",
+        "assessment": "Balance sheet quality (max 2 sentences)",
         "signal": "'Positive' or 'Neutral' or 'Caution'"
       },
-      
       "catalyst": {
-        "metric": "SPECIFIC: What events drive re-rating? Timelines?",
-        "assessment": "Timeline and impact",
+        "metric": "SPECIFIC dated events within 12 months with expected impact",
+        "assessment": "Timeline and magnitude (max 2 sentences)",
         "signal": "'Positive' or 'Neutral' or 'Caution'"
       },
-      
       "moat": {
-        "metric": "SPECIFIC: Competitive advantages, barriers",
-        "assessment": "Moat width and durability",
+        "metric": "SPECIFIC: competitive advantages, barriers, share data",
+        "assessment": "Moat width and durability (max 2 sentences)",
         "signal": "'Positive' or 'Neutral' or 'Caution'"
       },
-      
       "opportunity": {
-        "metric": "SPECIFIC: Unpriced upside? TAM expansion? New markets?",
-        "assessment": "Why not priced in?",
+        "metric": "SPECIFIC: structural/unpriced upside, TAM, new markets - no dates",
+        "assessment": "Why not priced in (max 2 sentences)",
         "signal": "'Positive' or 'Neutral' or 'Caution'"
       }
     },
-    
+
     "sector_briefing": {
-      "sector_name": "${sector}",
-      "sector_outlook": "Bullish/Neutral/Bearish? Growth trends, tailwinds, headwinds for sector",
-      "sector_growth": "Sector CAGR, margin trends, competitive consolidation",
-      "company_positioning": "${ticker}'s market position, competitive advantages, vs sector trends",
-      "sector_risks": "Macro risks affecting sector + how ${ticker} is positioned vs them"
+      "sector_name": "Most specific sub-sector",
+      "peer_set_used": ["Peer1", "Peer2", "Peer3"],
+      "sector_outlook": "Bullish/Neutral/Bearish + tailwinds/headwinds (max 2 sentences)",
+      "sector_growth": "Sub-sector CAGR, margin trends, consolidation (max 2 sentences)",
+      "company_positioning": "${ticker} vs the named peers on growth/quality/valuation (max 2 sentences)",
+      "sector_risks": "Top 2-3 macro risks + ${ticker}'s specific exposure to each (max 3 sentences)"
+    },
+
+    "data_quality": {
+      "price_basis": "CMP date used",
+      "key_sources": ["source + date", "source + date"],
+      "gaps": ["data not found that limited the analysis"]
     }
   }
 }
 
 CRITICAL RULES:
-1. Return ONLY JSON
-2. All 7 analysis dimensions + all sector briefing REQUIRED
-3. Be SPECIFIC: Use numbers, timelines, peer comparisons
-4. Investment opinion should be yours, not generic
-5. Sector briefing contextualizes company positioning within sector trends`;
+1. Return ONLY parseable JSON: double quotes, no trailing commas, no markdown fences, no comments; arrays never null (use []); keys never renamed or omitted
+2. All amounts in Rs Cr only - never mix lakh/million/crore; if a source magnitude conflicts with market cap, flag it in data_quality, do not propagate it
+3. Every number must trace to a dated source; "Not disclosed" beats a plausible stale number; do NOT fill gaps from general pre-training knowledge of the company
+4. Enum values exactly as specified (casing matters)
+5. Be brutally honest; signals must reflect the data, not the recommendation`;
 
         navigator.clipboard.writeText(prompt).then(() => {
             showToast('✅ Insights prompt copied!');
