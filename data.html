@@ -1541,11 +1541,26 @@
         var holdings = stock.holdings || [];
         var qty = holdings.reduce(function(s, h) { return s + (parseFloat(h.qty) || 0); }, 0);
         var holding = qty > 0 ? 'yes (in portfolio)' : 'no (watchlist / fresh money)';
-        return { sector: sector, cmpLine: cmpLine, peers: peers, holding: holding };
+        var industry = stock.industry
+            || (stock.company_details && stock.company_details.industry)
+            || (masterStock && masterStock.company_details && masterStock.company_details.industry)
+            || (masterStock && masterStock.derived_metrics && masterStock.derived_metrics.calculated_metrics
+                && masterStock.derived_metrics.calculated_metrics.industry)
+            || 'not provided';
+        return { sector: sector, industry: industry, cmpLine: cmpLine, peers: peers, holding: holding };
     }
 
-    function sectorFamily(sector) {
+    function sectorFamily(sector, industry) {
+        // Industry-first resolution (unified-symbols carries both) — the GICS
+        // sector alone is too coarse: Financials spans lenders, insurers and
+        // exchanges; Industrials spans EPC, shipping and airports.
         var s = (sector || '').toLowerCase();
+        var i = (industry || '').toLowerCase();
+        if (/insurance/.test(i)) return 'insurer';
+        if (/capital market|exchange|depositor|asset management|amc\b|broking|wealth|financial data/.test(i)) return 'feefin';
+        if (/hospital|diagnostic|clinic/.test(i)) return 'hospitals';
+        if (/shipping|airport/.test(i)) return 'commodity';
+        if (/bpm|it enabled|software|logistics technology/.test(i)) return 'services';
         if (s === 'financials') return 'financials';
         if (s === 'information technology') return 'services';
         if (s === 'consumer staples' || s === 'consumer discretionary') return 'consumer';
@@ -1555,6 +1570,31 @@
         if (s === 'telecom') return 'telecom';
         if (s === 'real estate') return 'realestate';
         return 'generic';
+    }
+
+    // Industry-specific metric focus, injected verbatim into the prompt so the
+    // model is told exactly what to extract for THIS business — no generic
+    // "adapt if" language. Keyword-matched against the unified-symbols industry.
+    var INDUSTRY_FOCUS = [
+        [/shipping/, 'TCY/charter rates by vessel segment, fleet size & age, spot vs period mix, asset values/NAV, scrapping & ordering'],
+        [/airport/, 'passenger traffic (domestic/international), aero vs non-aero revenue split, tariff/regulatory orders, terminal capex & capacity'],
+        [/hospitality|hotel/, 'occupancy %, ARR, RevPAR, room/key additions, owned vs managed mix, F&B/MICE share'],
+        [/multiplex|cinema/, 'footfalls, occupancy %, ATP, SPH, screen additions, content pipeline dependence'],
+        [/cables|wires/, 'volume growth, copper/aluminium price pass-through, channel vs institutional mix, capacity expansion, exports'],
+        [/batter/, 'replacement vs OEM mix, lead/lithium chemistry roadmap, technology tie-ups, aftermarket network'],
+        [/defence/, 'defence order book & pipeline, indigenization content, execution cycle length, export orders'],
+        [/depositor|exchange|capital market/, 'transaction/settlement volumes, demat account adds, market share, realization per transaction, regulatory fee caps'],
+        [/gemological|certification/, 'certification volumes, realization per certificate, lab network expansion'],
+        [/fertilizer|agrochem|pesticide/, 'volumes by product, subsidy receivables, raw material (ammonia/phosphate) costs, channel inventory'],
+        [/paper/, 'realizations per tonne, pulp cost, capacity utilization, segment mix (writing/packaging)'],
+        [/refining|oil refining/, 'GRM $/bbl, throughput, marketing margins, inventory gains/losses'],
+        [/wind|solar|renewable|bioenergy/, 'installed/commissioned capacity, PLF/CUF, order book or offtake PPAs, policy incentives']
+    ];
+    function industryFocus(industry) {
+        var i = (industry || '').toLowerCase();
+        for (var k = 0; k < INDUSTRY_FOCUS.length; k++)
+            if (INDUSTRY_FOCUS[k][0].test(i)) return INDUSTRY_FOCUS[k][1];
+        return '';
     }
 
     // Sector-aware guidance schema: universal core + family-specific middle.
@@ -1581,10 +1621,28 @@
             dim: '"deal_pipeline_health": "TCV run-rate + pipeline conversion + client bucket movement"'
         },
         financials: {
-            note: 'Lender framing: AUM, spreads, asset quality, capital. If the company is fee-based (AMC, exchange, depository) or an insurer, adapt: AUM/volumes/market share for fee-based; APE/VNB/embedded value for insurers.',
+            note: 'Lender framing: AUM, spreads, asset quality, capital.',
             fin: '"financial": {\n      "revenue": "NII/total income Rs X Cr (% YoY); AUM Rs X Cr (% YoY)",\n      "growth": "AUM & disbursement growth guidance",\n      "margins": "NIM/spread (bps), cost-to-income %, credit cost (bps), RoA/RoE",\n      "capex": "Branch additions + tech spend"\n    }',
             mid: '"book_and_disbursements": {\n      "aum": "Rs X Cr (Actual, +Y% YoY) | guided +Z%",\n      "disbursements": "Rs X Cr quarter/FY (Actual) | guided growth",\n      "mix": "Product mix % (e.g. HL/LAP, secured/unsecured) and guided direction"\n    },\n\n    "asset_quality": {\n      "gnpa_nnpa": "GNPA X% / NNPA Y% (was A%/B%); vs guided band",\n      "stages_pcr": "Stage-2 X%, Stage-3 Y%; PCR Z%",\n      "collections": "Collection efficiency X%; 1+/30+ DPD trend",\n      "credit_cost": "X bps (Actual) | guided Y bps"\n    },\n\n    "margins_and_costs": {\n      "nim_spread": "NIM/spread X% with QoQ/YoY movement and guided direction",\n      "cost_of_borrowing": "CoB X% (was Y%); borrowing mix; rate transmission",\n      "cost_to_income": "X% with drivers"\n    },\n\n    "capital_and_liquidity": {\n      "crar": "CRAR X% (Tier-I Y%)",\n      "leverage": "D/E or assets/equity; headroom",\n      "alm": "Floating vs fixed on both sides; liquidity buffer",\n      "fundraise": "Equity/debt raise plans"\n    },\n\n    "distribution": {\n      "branches": "X branches (+Y in period); states/districts covered",\n      "concentration_caps": "Geographic/product concentration limits and status"\n    }',
             dim: '"asset_quality_health": "GNPA vs guided band + credit cost + collection trend + PCR direction"'
+        },
+        insurer: {
+            note: 'Life/general insurer framing: APE, VNB, persistency, embedded value, solvency.',
+            fin: '"financial": {\n      "revenue": "APE Rs X Cr (% YoY); GWP Rs X Cr; VNB Rs X Cr at Y% margin",\n      "growth": "APE/VNB growth guidance; premium growth by product line",\n      "margins": "VNB margin %, opex ratio, combined ratio (general), claims experience",\n      "capex": "Distribution/tech investment; branch or partner additions"\n    }',
+            mid: '"premium_and_vnb": {\n      "ape": "Rs X Cr (Actual, +Y%) | guided +Z%",\n      "vnb_margin": "X% with drivers (product mix, assumptions)",\n      "product_mix": "Par X% | Non-par Y% | ULIP Z% | Protection W% | Annuity V% and guided shift"\n    },\n\n    "persistency_and_quality": {\n      "persistency": "13th month X%, 61st month Y% with trend",\n      "surrenders": "Surrender trends; new surrender-value regulation impact",\n      "solvency": "Solvency ratio X% vs 150% floor"\n    },\n\n    "distribution": {\n      "channel_mix": "Banca X% | Agency Y% | Direct/online Z%",\n      "partnerships": "New banca/partner tie-ups; agent additions"\n    },\n\n    "embedded_value": {\n      "ev": "EV Rs X Cr; RoEV X%",\n      "variances": "Operating/economic variance; assumption changes"\n    },\n\n    "capital_allocation": {\n      "dividend": "Payout policy and declared",\n      "capital": "Capital position, sub-debt or raise plans"\n    }',
+            dim: '"vnb_health": "APE growth + VNB margin trajectory + persistency + product mix shift"'
+        },
+        feefin: {
+            note: 'Fee-based financial infrastructure framing (exchange/depository/AMC/platform): volumes, market share, realization, operating leverage.',
+            fin: '"financial": {\n      "revenue": "Operating revenue Rs X Cr (% YoY) split by fee line",\n      "growth": "Volume/AUM-linked growth drivers and guidance",\n      "margins": "EBITDA margin %; opex growth vs revenue growth",\n      "capex": "Technology/infrastructure spend"\n    }',
+            mid: '"volumes_and_market_share": {\n      "volumes": "Transactions/settlement/AUM/accounts X (Actual, +Y%)",\n      "market_share": "X% by relevant metric (gaining/losing)",\n      "realization": "Revenue per transaction/unit and pricing changes"\n    },\n\n    "fee_lines": {\n      "revenue_by_stream": {\n        "Stream 1": "X% revenue | +Y% YoY",\n        "Stream 2": "X% revenue | +Y% YoY"\n      },\n      "regulatory_pricing": "Fee caps, tariff reviews, regulatory changes affecting realization"\n    },\n\n    "operating_leverage": {\n      "opex": "Opex growth X% vs revenue Y%; tech and people cost lines",\n      "new_initiatives": "New products/data/monetization initiatives"\n    },\n\n    "float_and_treasury": {\n      "cash_investments": "Net cash/investments Rs X Cr",\n      "other_income": "Treasury/float income share of PBT"\n    },\n\n    "capital_allocation": {\n      "payout": "Dividend/buyback (typically high-payout)",\n      "mna": "Acquisitions/stakes"\n    }',
+            dim: '"volume_share_health": "Volume growth + market share + realization trend + regulatory pricing risk"'
+        },
+        hospitals: {
+            note: 'Hospitals/healthcare-services framing: occupancy, ARPOB, bed expansion, payor mix.',
+            fin: '"financial": {\n      "revenue": "Rs X Cr (% YoY) split volume (occupancy/footfalls) vs ARPOB",\n      "growth": "Occupancy + ARPOB + bed addition guidance",\n      "margins": "EBITDA margin %; mature vs new-hospital margin split",\n      "capex": "Bed additions with capex Rs X Cr and timeline"\n    }',
+            mid: '"occupancy_and_arpob": {\n      "occupancy": "X% on Y operational beds (was Z%)",\n      "arpob": "Rs X lakh/annum (+Y%)",\n      "alos": "X days trend"\n    },\n\n    "bed_expansion": {\n      "additions": ["Site: beds, brownfield/greenfield, capex Rs X Cr, timeline"],\n      "pipeline": "Total planned beds over 2-3 years"\n    },\n\n    "payor_and_case_mix": {\n      "payor_mix": "Insurance X% | Cash Y% | Scheme Z% | International W%",\n      "specialty_mix": "High-end specialty share (oncology/cardiac/transplant) and trend"\n    },\n\n    "adjacent_verticals": {\n      "diagnostics_pharmacy_digital": "Revenue and growth of non-hospital verticals"\n    },\n\n    "capital_allocation": {\n      "capex_detailed": "Rs X Cr | growth vs maintenance",\n      "debt": "Net debt Rs X Cr; net debt/EBITDA",\n      "returns": "RoCE overall and mature-cluster RoCE"\n    }',
+            dim: '"occupancy_health": "Occupancy + ARPOB trajectory + new-bed ramp + payor mix quality"'
         },
         pharma: {
             note: 'Pharma/healthcare framing: pipeline, regulatory status, market mix, R&D.',
@@ -1628,11 +1686,13 @@
         var name = stock.name || ticker;
         
         var ctx = promptContext(ticker, stock);
-        var fam = GUIDANCE_FAMILY[sectorFamily(ctx.sector)];
+        var fam = GUIDANCE_FAMILY[sectorFamily(ctx.sector, ctx.industry)];
+        var focus = industryFocus(ctx.industry);
 
         var prompt = `TICKER: ${ticker}
 COMPANY: ${name}
 SECTOR: ${ctx.sector}
+INDUSTRY: ${ctx.industry}
 CURRENT PRICE: ${ctx.cmpLine}
 
 You are a senior equity analyst. Extract guidance from the LATEST earnings call. Provide COMPLETE fundamental analysis.
@@ -1640,7 +1700,8 @@ You are a senior equity analyst. Extract guidance from the LATEST earnings call.
 CRITICAL: Be SPECIFIC with actual numbers. Fill ALL fields in the schema below.
 - Tag every numeric field as (Actual Qx FYxx) or (Guided FYxx). Never present actuals as guidance.
 - "quarter" = the quarter the latest available earnings call actually covers - determine it from the call itself, do not assume the most recent calendar quarter has been reported.
-- ${fam.note}
+- ${fam.note}${focus ? `
+- FOCUS METRICS for this industry: ${focus}` : ''}
 
 {
   "ticker": "${ticker}",
@@ -1720,6 +1781,71 @@ CRITICAL RULES:
         });
     }
     
+    // Resolved insights dimensions per family — the prompt states exactly
+    // which metrics apply to THIS company; no "if lender then adapt" language.
+    var INSIGHTS_FAMILY = {
+        financials: { note: 'This is a lender. Analyse it as one.',
+            val: 'P/B + RoA/RoE vs each named peer (P/E secondary), vs sub-sector median',
+            gro: 'AUM & disbursement growth, mix, quality of growth',
+            pro: 'NIM/spread, credit cost, cost-to-income, RoA drivers with trend',
+            cash: 'CRAR/Tier-I, leverage, ALM profile, cost & mix of borrowings, GNPA/NNPA' },
+        insurer: { note: 'This is an insurer. Analyse it as one.',
+            val: 'P/EV and VNB multiple vs named peers',
+            gro: 'APE and VNB growth, product mix shift',
+            pro: 'VNB margin, opex ratio, persistency (13th/61st month)',
+            cash: 'Solvency ratio, EV growth/RoEV, capital position' },
+        feefin: { note: 'This is a fee-based financial infrastructure business (exchange/depository/AMC/platform).',
+            val: 'P/E vs volume-linked growth, EV/EBITDA vs named peers',
+            gro: 'Transaction/AUM/account volume growth, market share',
+            pro: 'EBITDA margin, operating leverage, realization/yield per unit',
+            cash: 'Net cash/investments, float income share of PBT, payout ratio' },
+        hospitals: { note: 'This is a hospital/healthcare-services operator.',
+            val: 'EV/EBITDA and EV per bed vs named peers',
+            gro: 'Occupancy, ARPOB, operational bed additions',
+            pro: 'EBITDA margin, mature vs ramp-up hospital split, ALOS efficiency',
+            cash: 'Net debt/EBITDA, capex intensity, cluster RoCE' },
+        consumer: { note: 'This is a consumer products company.',
+            val: 'P/E vs growth vs named FMCG/consumer peers, vs sub-sector median',
+            gro: 'Volume growth vs realization/mix, distribution expansion, market share',
+            pro: 'Gross & EBITDA margin with input-cost and A&P drivers',
+            cash: 'Net cash/debt, working-capital cycle, dividend payout' },
+        epc: { note: 'This is an EPC/capital-goods company.',
+            val: 'P/E on normalized earnings, EV/EBITDA, mcap vs order book, vs named peers',
+            gro: 'Order inflows, book-to-bill, execution run-rate',
+            pro: 'EBITDA margin, provisions/one-offs, margin embedded in backlog',
+            cash: 'Net D/E, working-capital days, retention money, promoter pledge if any' },
+        services: { note: 'This is an IT/services company.',
+            val: 'P/E vs growth, FCF yield vs named peers',
+            gro: 'CC revenue growth, TCV/deal wins, pipeline',
+            pro: 'EBIT margin band, utilization, pricing, attrition cost',
+            cash: 'Net cash, FCF conversion, payout policy' },
+        pharma: { note: 'This is a pharma/life-sciences company.',
+            val: 'P/E on base business (ex one-offs), EV/EBITDA vs named peers',
+            gro: 'US/India/RoW growth, launch cadence, pipeline monetization',
+            pro: 'Gross margin vs price erosion, R&D intensity, EBITDA margin',
+            cash: 'Net debt, capex, regulatory remediation exposure' },
+        commodity: { note: 'This is a commodity/process/asset-heavy company.',
+            val: 'EV/EBITDA on mid-cycle earnings, P/B vs named peers',
+            gro: 'Volume growth, capacity additions and commissioning',
+            pro: 'EBITDA/unit or spreads, cost-curve position, realization trend',
+            cash: 'Net debt/EBITDA, capex phase, FCF at current prices' },
+        telecom: { note: 'This is a telecom operator.',
+            val: 'EV/EBITDA vs named peers',
+            gro: 'Subscriber net adds + ARPU trajectory',
+            pro: 'EBITDA margin, capex intensity, tariff cycle',
+            cash: 'Net debt/EBITDA, spectrum/AGR obligations' },
+        realestate: { note: 'This is a real-estate developer.',
+            val: 'P/NAV, EV to pre-sales vs named peers',
+            gro: 'Pre-sales growth, launch pipeline GDV',
+            pro: 'Embedded margins on sold inventory, collections efficiency',
+            cash: 'Net D/E, operating cashflow after land and interest' },
+        generic: { note: 'Analyse per this specific business model.',
+            val: 'P/E, P/B, EV/EBITDA vs each named peer, vs sub-sector median',
+            gro: 'YoY growth %, trend, demand pipeline as applicable',
+            pro: 'Operating & PAT margin with trend and drivers',
+            cash: 'Debt, FCF, cash position, leverage' }
+    };
+
     function generateInsightsPrompt(ticker) {
         var stock = symbolsData.find(s => s.ticker === ticker) || masterData.find(s => s.ticker === ticker);
         if (!stock) {
@@ -1729,16 +1855,22 @@ CRITICAL RULES:
         
         var name = stock.name || ticker;
         var ctx = promptContext(ticker, stock);
+        var famKey = sectorFamily(ctx.sector, ctx.industry);
+        var idim = INSIGHTS_FAMILY[famKey];
+        var focus = industryFocus(ctx.industry);
 
         var prompt = `TICKER: ${ticker}
 COMPANY: ${name}
 SECTOR: ${ctx.sector}
+INDUSTRY: ${ctx.industry}
 CURRENT PRICE: ${ctx.cmpLine}
 PEERS: ${ctx.peers}
 HOLDING: ${ctx.holding}
 
 You are a senior equity analyst. Provide an INDEPENDENT INVESTMENT THESIS & SECTOR CONTEXT.
 This is YOUR opinion. Do not restate management guidance as the thesis - guidance may be referenced but must be independently assessed. Horizon: 12 months unless stated.
+${idim.note}${focus ? `
+FOCUS METRICS for this industry: ${focus}` : ''}
 
 RECOMMENDATION RUBRIC (apply strictly):
 - BUY    = expected 12M total return > +15%
@@ -1746,13 +1878,6 @@ RECOMMENDATION RUBRIC (apply strictly):
 - REDUCE = expected 12M return -10% to -20%, or risk/reward deteriorating; trim
 - EXIT   = structural thesis break or expected return < -20%
 Recommendation must be reconcilable with the signal mix; if signals and recommendation diverge, the thesis must state why.
-
-SECTOR ADAPTATION - if the company is a lender/NBFC/bank, reinterpret dimensions:
-- valuation     -> P/B + RoA/RoE (P/E secondary), vs named peers
-- growth        -> AUM, disbursement/loan growth, quality of growth
-- profitability -> NIM/spread, credit cost, cost-to-income, RoA drivers
-- cash_strength -> CRAR/Tier-I, leverage, ALM profile, cost & mix of borrowings, GNPA/NNPA
-Similar remapping for other non-manufacturing models (pharma: pipeline/US erosion; real estate: pre-sales/collections).
 
 DEFINITIONS:
 - catalyst    = DATED events within 12 months only
@@ -1773,22 +1898,22 @@ DEFINITIONS:
 
     "analysis": {
       "valuation": {
-        "metric": "SPECIFIC: P/E, P/B (or P/B + RoA for lenders), vs each named peer, vs sub-sector median",
+        "metric": "SPECIFIC: ${idim.val}",
         "assessment": "Cheap/expensive and why (max 2 sentences)",
         "signal": "'Positive' or 'Neutral' or 'Caution'"
       },
       "growth": {
-        "metric": "SPECIFIC: YoY %, trend, AUM/order book as applicable",
+        "metric": "SPECIFIC: ${idim.gro}",
         "assessment": "Quality and sustainability (max 2 sentences)",
         "signal": "'Positive' or 'Neutral' or 'Caution'"
       },
       "profitability": {
-        "metric": "SPECIFIC: OPM/PAT margin (or NIM/spread/credit cost for lenders) with trend",
+        "metric": "SPECIFIC: ${idim.pro}",
         "assessment": "Drivers and durability (max 2 sentences)",
         "signal": "'Positive' or 'Neutral' or 'Caution'"
       },
       "cash_strength": {
-        "metric": "SPECIFIC: debt/FCF/cash (or CRAR/ALM/CoB for lenders)",
+        "metric": "SPECIFIC: ${idim.cash}",
         "assessment": "Balance sheet quality (max 2 sentences)",
         "signal": "'Positive' or 'Neutral' or 'Caution'"
       },
