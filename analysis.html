@@ -1163,7 +1163,7 @@ function renderTab(tab) {
 
             // Risk item with severity badge (supports compound grades e.g. Medium/High)
             const riskRow = (r) => {
-                const mt = r.match(/^(.*?)\s*[-–]\s*((?:High|Medium|Low)(?:\s*\/\s*(?:High|Medium|Low))?)\s*$/i);
+                const mt = r.match(/^(.*?)\s*(?:[-–]\s*|\(\s*)((?:High|Medium|Low)(?:\s*\/\s*(?:High|Medium|Low))?)\s*\)?\s*$/i);
                 const txt = mt ? mt[1] : r;
                 const sev = mt ? mt[2] : null;
                 const sc = sev ? (/high/i.test(sev) ? 'var(--rd)' : /medium/i.test(sev) ? 'var(--yw)' : 'var(--gr)') : '';
@@ -1179,6 +1179,31 @@ function renderTab(tab) {
                     <span class="fx-li-m" style="color:var(--gr)">✓</span>
                     <span class="fx-prose" style="flex:1">${hlSent(c)}</span>
                 </div>`;
+
+            // v3 sector-aware guidance: render every non-universal top-level
+            // section generically (order_book_and_inflows for EPC,
+            // volumes_and_pricing for FMCG, asset_quality for lenders, ...)
+            // in schema order. Backward-compatible: legacy sections
+            // (deals_and_pipeline, customers, operations, ...) walk the same path.
+            const UNIVERSAL_KEYS = ['quarter','date','summary','financial','business','management','competitive_position','investor_verdict','analyst_dimensions','data_quality','ticker'];
+            const SEC_COLORS = ['var(--yw)','var(--gr)','var(--ac)'];
+            const renderField = (k, v, color) => {
+                if (typeof v === 'string') return kvRow(pretty(k), v);
+                if (Array.isArray(v)) return listRows(pretty(k), v, color, '\u25b8');
+                if (v && typeof v === 'object') {
+                    const inner = joinRows(kvGroup(v),
+                        ...Object.entries(v).filter(([,x]) => Array.isArray(x)).map(([kk,x]) => listRows(pretty(kk), x, color, '\u25b8')));
+                    return inner ? `<div class="fx-stack"><div class="fx-lab" style="color:${color}">${pretty(k)}</div>${inner}</div>` : '';
+                }
+                return '';
+            };
+            let famIdx = 0;
+            const renderFamilySections = () => Object.entries(g)
+                .filter(([k, v]) => !UNIVERSAL_KEYS.includes(k) && v && typeof v === 'object' && !Array.isArray(v))
+                .map(([k, v]) => {
+                    const color = SEC_COLORS[famIdx++ % SEC_COLORS.length];
+                    return secCard(pretty(k), color, joinRows(...Object.entries(v).map(([kk, vv]) => renderField(kk, vv, color))));
+                }).join('');
 
             const chip = (label, value) => {
                 const c = sentColor(value);
@@ -1221,12 +1246,6 @@ function renderTab(tab) {
                     ${finCard('Capex', fin.capex, 'var(--ac)')}
                 </div>
 
-                <!-- SEGMENTS -->
-                ${secCard('Segments', 'var(--yw)', joinRows(
-                    kvGroup(sg2.revenue_by_segment),
-                    stackRow('Outlook', sg2.segment_outlook, 'var(--yw)')
-                ))}
-
                 <!-- BUSINESS -->
                 ${secCard('Business', 'var(--gr)', joinRows(
                     kvRow('Expansion', biz.expansion),
@@ -1249,40 +1268,8 @@ function renderTab(tab) {
                 <div class="fx-card-b">${m.risks.map(riskRow).join('')}</div></div>` : ''}
                 ` : ''}
 
-                <!-- DEALS & PIPELINE -->
-                ${secCard('Deals & Pipeline', 'var(--ac)', joinRows(
-                    listRows('Deal Wins', dp.deal_wins, 'var(--gr)', '▸'),
-                    kvGroup(dp.order_book),
-                    kvRow('Sales Pipeline', dp.sales_pipeline),
-                    kvRow('Pipeline Value', dp.deal_pipeline_value)
-                ))}
-
-                <!-- CUSTOMERS -->
-                ${secCard('Customers', 'var(--gr)', joinRows(
-                    listRows('Additions', cu.customer_additions, 'var(--gr)', '+'),
-                    listRows('Losses', cu.customer_losses, 'var(--rd)', '−'),
-                    kvRow('Concentration', cu.customer_concentration),
-                    stackRow('Net Assessment', cu.net_assessment, 'var(--gr)')
-                ))}
-
-                <!-- GEOGRAPHY -->
-                ${secCard('Geography', 'var(--ac)', joinRows(
-                    kvGroup(geo.revenue_mix),
-                    stackRow('Expansion Plans', geo.expansion_plans, 'var(--ac)')
-                ))}
-
-                <!-- OPERATIONS -->
-                ${secCard('Operations', 'var(--yw)', joinRows(
-                    kvGroup(ops.headcount),
-                    kvGroup(ops.raw_materials),
-                    kvGroup(ops.working_capital)
-                ))}
-
-                <!-- CAPITAL ALLOCATION -->
-                ${secCard('Capital Allocation', 'var(--ac)', joinRows(
-                    kvGroup(ca.capex_detailed),
-                    kvGroup(ca.debt_management)
-                ))}
+                <!-- SECTOR-AWARE FAMILY SECTIONS (segments, pipelines, asset quality, volumes, ... in schema order) -->
+                ${renderFamilySections()}
 
                 <!-- COMPETITIVE POSITION -->
                 ${secCard('Competitive Position', 'var(--gr)', joinRows(
@@ -1302,6 +1289,18 @@ function renderTab(tab) {
                 ${secHead('Investor Verdict', 'var(--gr)')}
                 <div class="fx-card" style="border-color:rgba(0,232,150,.35)">
                     <div class="fx-card-b" style="border-top:2px solid var(--gr)"><div class="fx-prose" style="font-size:12px">${hlSent(g.investor_verdict)}</div></div>
+                </div>` : ''}
+
+                <!-- DATA QUALITY (v3 schema) -->
+                ${g.data_quality ? `
+                <div class="fx-card" style="opacity:0.75;margin-top:10px">
+                    <div class="fx-card-h"><span class="fx-lab" style="color:var(--tx3)">Data Quality</span></div>
+                    <div class="fx-card-b">${joinRows(
+                        kvRow('Source', g.data_quality.source),
+                        kvRow('Call Date', g.data_quality.call_date),
+                        listRows('Not Found', g.data_quality.fields_not_found, 'var(--tx3)', '\u00b7'),
+                        listRows('Conflicts', g.data_quality.conflicting_sources, 'var(--yw)', '\u25b8')
+                    )}</div>
                 </div>` : ''}
 
                 </div>
@@ -1399,6 +1398,7 @@ function renderTab(tab) {
                 </div>` : '';
 
             const sbRows = [
+                sbRow('Peers Used', Array.isArray(sb.peer_set_used) ? sb.peer_set_used.join(', ') : sb.peer_set_used, 'var(--ac)'),
                 sbRow('Outlook', sb.sector_outlook, 'var(--ac)'),
                 sbRow('Growth & Dynamics', sb.sector_growth, 'var(--yw)'),
                 sbRow('Context', sb.sector_context, 'var(--ac)'),
@@ -1414,15 +1414,25 @@ function renderTab(tab) {
                 <div class="fx-card" style="border-color:${recColor.replace('var(--gr)','rgba(0,232,150,.4)').replace('var(--yw)','rgba(255,191,71,.4)').replace('var(--rd)','rgba(255,107,133,.4)').replace('var(--ac)','rgba(0,242,255,.4)')}">
                     <div class="fx-card-h" style="background:linear-gradient(90deg,${tint(recColor)},transparent)">
                         <span style="font-size:13px;font-weight:900;color:${recColor};letter-spacing:3px">${rec}</span>
-                        <span style="font-size:8px;color:var(--tx3)">${i.date || ''}</span>
+                        <span style="font-size:8px;color:var(--tx3)">${i.as_of || i.date || ''}</span>
                     </div>
                     <div class="fx-card-b">
                         <div class="fx-prose" style="font-size:12px">${hlSent(i.thesis) || 'No thesis provided'}</div>
                         ${scorecard}
-                        ${i.trigger ? `
+                        ${(i.fair_value_range || i.expected_12m_return) ? `
+                        <div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:10px;padding-top:10px;border-top:1px solid var(--b1)">
+                            ${i.fair_value_range ? `<div><div class="fx-lab" style="color:var(--ac)">Fair Value</div><div class="fx-prose" style="font-size:11px">${hlSent(i.fair_value_range)}</div></div>` : ''}
+                            ${i.expected_12m_return ? `<div><div class="fx-lab" style="color:var(--yw)">Exp. 12M Return</div><div class="fx-prose" style="font-size:11px">${hlSent(i.expected_12m_return)}</div></div>` : ''}
+                        </div>` : ''}
+                        ${(i.upgrade_trigger || i.downgrade_trigger || i.trigger) ? `
                         <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--b1)">
                             <div class="fx-lab" style="color:var(--yw);margin-bottom:4px">Rating Triggers</div>
-                            <div class="fx-prose" style="font-size:10.5px;color:var(--tx3)">${hlSent(i.trigger)}</div>
+                            ${(i.upgrade_trigger || i.trigger) ? `<div class="fx-prose" style="font-size:10.5px;color:var(--tx3);margin-bottom:${i.downgrade_trigger?'6px':'0'}"><span style="color:var(--gr);font-weight:700">${i.upgrade_trigger?'UPGRADE IF: ':''}</span>${hlSent(i.upgrade_trigger || i.trigger)}</div>` : ''}
+                            ${i.downgrade_trigger ? `<div class="fx-prose" style="font-size:10.5px;color:var(--tx3)"><span style="color:var(--rd);font-weight:700">DOWNGRADE IF: </span>${hlSent(i.downgrade_trigger)}</div>` : ''}
+                        </div>` : ''}
+                        ${i.holder_note ? `
+                        <div style="margin-top:8px;padding:6px 8px;background:rgba(0,242,255,.05);border-left:2px solid var(--ac)">
+                            <div class="fx-prose" style="font-size:10.5px"><span style="color:var(--ac);font-weight:700">HOLDER: </span>${hlSent(i.holder_note)}</div>
                         </div>` : ''}
                     </div>
                 </div>

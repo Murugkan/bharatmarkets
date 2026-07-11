@@ -1544,6 +1544,80 @@
         return { sector: sector, cmpLine: cmpLine, peers: peers, holding: holding };
     }
 
+    function sectorFamily(sector) {
+        var s = (sector || '').toLowerCase();
+        if (s === 'financials') return 'financials';
+        if (s === 'information technology') return 'services';
+        if (s === 'consumer staples' || s === 'consumer discretionary') return 'consumer';
+        if (s === 'industrials' || s === 'defence') return 'epc';
+        if (s === 'healthcare') return 'pharma';
+        if (s === 'materials' || s === 'energy' || s === 'utilities') return 'commodity';
+        if (s === 'telecom') return 'telecom';
+        if (s === 'real estate') return 'realestate';
+        return 'generic';
+    }
+
+    // Sector-aware guidance schema: universal core + family-specific middle.
+    // Each family defines: note (instruction line), fin (the "financial" block),
+    // mid (family sections replacing the old generic deals/customers/headcount
+    // set), dim (the family health dimension inside analyst_dimensions).
+    var GUIDANCE_FAMILY = {
+        consumer: {
+            note: 'FMCG/consumer framing: volumes, realization, distribution, brands, input costs. No order books, deal pipelines or headcount metrics.',
+            fin: '"financial": {\n      "revenue": "SPECIFIC target with growth rate; split volume vs realization/mix",\n      "growth": "SPECIFIC volume growth target + pricing/mix contribution",\n      "margins": "SPECIFIC gross, EBITDA & PAT margins with trend and guided direction",\n      "capex": "SPECIFIC capex amount & purpose (capacity, backward integration)"\n    }',
+            mid: '"volumes_and_pricing": {\n      "volume_growth": "X% YoY volume (Actual) | guided Y%",\n      "pricing_actions": "Price hikes/cuts taken or planned; grammage changes",\n      "premiumization_mix": "Value-added/premium share of revenue and trajectory"\n    },\n\n    "distribution": {\n      "reach": "Direct + indirect outlet coverage; expansion plan",\n      "channel_mix": "GT X% | MT Y% | e-commerce Z% | quick-commerce W% with growth rates",\n      "new_geographies": "States/regions entered or targeted with timeline"\n    },\n\n    "brands_and_launches": {\n      "new_launches": ["Product/SKU with category and timeline"],\n      "adspend": "A&P spend as % of sales; brand investments (ambassadors, campaigns)",\n      "market_share": "Category 1: X% (gaining/losing) | Category 2: Y%"\n    },\n\n    "raw_materials": {\n      "cost_outlook": "Key input basket easing or intensifying; inventory position",\n      "expected_impact": "X-Y bps gross margin benefit/pressure",\n      "key_materials": "Input 1 +X% cost | Input 2 -Y% cost"\n    },\n\n    "segments": {\n      "revenue_by_category": {\n        "Category 1": "X% revenue | +Y% YoY",\n        "Category 2": "X% revenue | +Y% YoY"\n      },\n      "category_outlook": "Which categories accelerating vs declining"\n    },\n\n    "capital_allocation": {\n      "capex_and_returns": "Rs X Cr capex | funding source | payback logic",\n      "dividend_buyback": "Payout policy/%, interim+final declared",\n      "debt": "Gross/net debt Rs X Cr; direction"\n    }',
+            dim: '"demand_health": "Volume trajectory + distribution expansion + share trend + channel momentum"'
+        },
+        epc: {
+            note: 'EPC/capital-goods framing: order book, inflows, execution, working capital.',
+            fin: '"financial": {\n      "revenue": "SPECIFIC target with growth rate",\n      "growth": "SPECIFIC growth target (revenue and order inflow)",\n      "margins": "SPECIFIC EBITDA & PAT margins; provisions/one-offs called out",\n      "capex": "SPECIFIC capex amount & purpose"\n    }',
+            mid: '"order_book_and_inflows": {\n      "order_book_total": "Rs X Cr as of quarter-end; book-to-bill X.Xx",\n      "inflows": "Rs X Cr in quarter / FY (Actual) | guided Rs Y Cr",\n      "by_segment": "Segment 1 Rs X Cr (X%) | Segment 2 Rs Y Cr (Y%)",\n      "pipeline_l1": "Rs X Cr addressable pipeline; Rs Y Cr L1/definitive visibility"\n    },\n\n    "execution": {\n      "key_projects": ["Project: stage/milestone with timeline"],\n      "execution_timeline": "X% of book executable in next 12 months",\n      "bottlenecks": "Client payments, clearances, supply chain, geographies affected"\n    },\n\n    "working_capital": {\n      "receivables_dso": "X days (was Y days); retention money position",\n      "wc_days": "X days (target Y days)",\n      "cash_release_potential": "Rs X Cr expected by when"\n    },\n\n    "geography": {\n      "revenue_mix": {"Domestic": "X%", "Overseas": "Y%"},\n      "expansion_plans": "New countries/regions with timeline"\n    },\n\n    "capital_allocation": {\n      "capex_detailed": "Rs X Cr total | equipment vs facility | funding source",\n      "debt_management": "Gross/net debt Rs X Cr; net D/E; repayment plan and timeline"\n    }',
+            dim: '"order_book_health": "Order book value + inflow run-rate vs guidance + execution risk"'
+        },
+        services: {
+            note: 'IT/services framing: deal TCV, clients, people metrics, verticals.',
+            fin: '"financial": {\n      "revenue": "SPECIFIC target with growth rate (cc terms if given)",\n      "growth": "SPECIFIC growth target; organic vs inorganic",\n      "margins": "SPECIFIC EBIT/EBITDA & PAT margins with guided band",\n      "capex": "SPECIFIC capex/investment areas (facilities, platforms, AI)"\n    }',
+            mid: '"deals_and_pipeline": {\n      "deal_wins": ["Deal: $X M/Rs X Cr TCV, client type/vertical, when"],\n      "total_tcv": "$X M / Rs X Cr in quarter (Actual); net-new vs renewal split",\n      "pipeline": "Pipeline size and qualitative trajectory; large-deal participation"\n    },\n\n    "clients": {\n      "client_additions": "Net adds; movement in $1M/$5M/$10M+ buckets",\n      "client_concentration": "Top 5 = X% revenue; Top 10 = Y%",\n      "mining_vs_hunting": "Existing-client growth vs new logos"\n    },\n\n    "people": {\n      "headcount": "X employees (net add/reduction Y)",\n      "utilization": "X% (target Y%)",\n      "attrition": "X% LTM vs Y% prior",\n      "hiring_plan": "Freshers/laterals planned"\n    },\n\n    "segments": {\n      "revenue_by_vertical": {\n        "Vertical 1": "X% revenue | +Y% YoY",\n        "Vertical 2": "X% revenue | +Y% YoY"\n      },\n      "vertical_outlook": "Which verticals accelerating vs declining"\n    },\n\n    "geography": {\n      "revenue_mix": {"Americas": "X%", "Europe": "Y%", "India/RoW": "Z%"},\n      "demand_commentary": "Geo-wise demand and decision-cycle trends"\n    },\n\n    "capital_allocation": {\n      "payout": "Dividend/buyback policy and % of FCF",\n      "mna": "Acquisitions closed/announced with rationale",\n      "cash": "Net cash Rs X Cr"\n    }',
+            dim: '"deal_pipeline_health": "TCV run-rate + pipeline conversion + client bucket movement"'
+        },
+        financials: {
+            note: 'Lender framing: AUM, spreads, asset quality, capital. If the company is fee-based (AMC, exchange, depository) or an insurer, adapt: AUM/volumes/market share for fee-based; APE/VNB/embedded value for insurers.',
+            fin: '"financial": {\n      "revenue": "NII/total income Rs X Cr (% YoY); AUM Rs X Cr (% YoY)",\n      "growth": "AUM & disbursement growth guidance",\n      "margins": "NIM/spread (bps), cost-to-income %, credit cost (bps), RoA/RoE",\n      "capex": "Branch additions + tech spend"\n    }',
+            mid: '"book_and_disbursements": {\n      "aum": "Rs X Cr (Actual, +Y% YoY) | guided +Z%",\n      "disbursements": "Rs X Cr quarter/FY (Actual) | guided growth",\n      "mix": "Product mix % (e.g. HL/LAP, secured/unsecured) and guided direction"\n    },\n\n    "asset_quality": {\n      "gnpa_nnpa": "GNPA X% / NNPA Y% (was A%/B%); vs guided band",\n      "stages_pcr": "Stage-2 X%, Stage-3 Y%; PCR Z%",\n      "collections": "Collection efficiency X%; 1+/30+ DPD trend",\n      "credit_cost": "X bps (Actual) | guided Y bps"\n    },\n\n    "margins_and_costs": {\n      "nim_spread": "NIM/spread X% with QoQ/YoY movement and guided direction",\n      "cost_of_borrowing": "CoB X% (was Y%); borrowing mix; rate transmission",\n      "cost_to_income": "X% with drivers"\n    },\n\n    "capital_and_liquidity": {\n      "crar": "CRAR X% (Tier-I Y%)",\n      "leverage": "D/E or assets/equity; headroom",\n      "alm": "Floating vs fixed on both sides; liquidity buffer",\n      "fundraise": "Equity/debt raise plans"\n    },\n\n    "distribution": {\n      "branches": "X branches (+Y in period); states/districts covered",\n      "concentration_caps": "Geographic/product concentration limits and status"\n    }',
+            dim: '"asset_quality_health": "GNPA vs guided band + credit cost + collection trend + PCR direction"'
+        },
+        pharma: {
+            note: 'Pharma/healthcare framing: pipeline, regulatory status, market mix, R&D.',
+            fin: '"financial": {\n      "revenue": "SPECIFIC target with growth rate",\n      "growth": "SPECIFIC growth target by market (US/India/RoW)",\n      "margins": "SPECIFIC gross & EBITDA margins with guided band",\n      "capex": "SPECIFIC capex amount & purpose (capacity, new blocks)"\n    }',
+            mid: '"pipeline_and_filings": {\n      "filings": "ANDAs/dossiers filed X, pending Y; key approvals in quarter",\n      "launches": ["Product: market, timing, exclusivity/FTF if any"],\n      "specialty_cdmo": "Specialty/biosimilar/CDMO progress and revenue contribution"\n    },\n\n    "markets": {\n      "us": "US revenue $X M; price erosion X-Y%; new launch offset",\n      "india": "India growth X% vs IPM Y%; therapy leadership",\n      "row_emerging": "RoW/EM growth and key geographies"\n    },\n\n    "regulatory": {\n      "usfda_status": "Plant-wise: OAI/VAI/EIR status; observations pending",\n      "remediation": "Timelines and cost of remediation if any"\n    },\n\n    "rnd_and_capex": {\n      "rnd": "R&D spend Rs X Cr (X% of sales); guided range",\n      "capex": "Rs X Cr with purpose and timeline"\n    },\n\n    "segments": {\n      "revenue_by_market": {"US": "X%", "India": "Y%", "RoW/API": "Z%"},\n      "segment_outlook": "Which markets/therapies accelerating vs declining"\n    },\n\n    "capital_allocation": {\n      "debt": "Gross/net debt Rs X Cr; direction",\n      "payout_mna": "Dividend policy; acquisitions/licensing deals"\n    }',
+            dim: '"pipeline_health": "Filing/approval cadence + launch execution + regulatory risk"'
+        },
+        commodity: {
+            note: 'Commodity/process framing: volumes, realizations, capacity, cost curve, spreads.',
+            fin: '"financial": {\n      "revenue": "SPECIFIC target with growth; split volume vs realization",\n      "growth": "SPECIFIC volume growth target",\n      "margins": "SPECIFIC EBITDA/ton or margin % with guided direction; spreads (e.g. GRM) where applicable",\n      "capex": "SPECIFIC capex amount & projects"\n    }',
+            mid: '"volumes_and_realizations": {\n      "volumes": "Production/sales X units (Actual, +Y%) | guided Z",\n      "realizations": "Rs X/unit with QoQ/YoY movement; premiums/discounts to benchmark",\n      "demand_outlook": "End-market demand commentary"\n    },\n\n    "capacity_and_projects": {\n      "utilization": "X% current; exit target Y%",\n      "expansion_projects": ["Project: capacity, capex Rs X Cr, commissioning timeline"],\n      "commissioned": "Capacity added in period"\n    },\n\n    "costs_and_spreads": {\n      "input_costs": "Key inputs (coal/crude/ore/power) trajectory and hedges",\n      "cost_position": "Cost/unit trend; position on cost curve",\n      "spreads": "Product spreads or margin per unit vs benchmark"\n    },\n\n    "segments": {\n      "revenue_by_segment": {\n        "Segment 1": "X% revenue | +Y% YoY",\n        "Segment 2": "X% revenue | +Y% YoY"\n      },\n      "segment_outlook": "Which segments accelerating vs declining"\n    },\n\n    "capital_allocation": {\n      "capex_detailed": "Rs X Cr total | growth vs maintenance | funding source",\n      "debt_management": "Gross/net debt Rs X Cr; net debt/EBITDA X.Xx; deleveraging plan",\n      "payout": "Dividend policy"\n    }',
+            dim: '"volume_price_health": "Volume trajectory + realization/spread trend + project commissioning on time"'
+        },
+        telecom: {
+            note: 'Telecom framing: subscribers, ARPU, capex intensity, spectrum/leverage.',
+            fin: '"financial": {\n      "revenue": "SPECIFIC target with growth rate",\n      "growth": "Subscriber + ARPU growth guidance",\n      "margins": "EBITDA margin with guided direction",\n      "capex": "Capex Rs X Cr; capex/revenue intensity and peak-capex commentary"\n    }',
+            mid: '"subscribers_and_arpu": {\n      "subscribers": "X M subs (net add/loss Y M); 4G/5G/broadband mix",\n      "arpu": "Rs X (was Y); tariff actions taken/expected",\n      "churn": "X% monthly"\n    },\n\n    "network_and_spectrum": {\n      "rollout": "5G/FTTH coverage and rollout timeline",\n      "spectrum": "Holdings/renewals/payments due"\n    },\n\n    "segments": {\n      "revenue_by_segment": {"Mobility": "X%", "Home/Broadband": "Y%", "Enterprise": "Z%"},\n      "segment_outlook": "Which segments accelerating vs declining"\n    },\n\n    "capital_allocation": {\n      "debt": "Net debt Rs X Cr; net debt/EBITDA; AGR/spectrum liabilities",\n      "payout": "Dividend policy"\n    }',
+            dim: '"subscriber_arpu_health": "Net adds + ARPU trajectory + churn vs peers"'
+        },
+        realestate: {
+            note: 'Real-estate framing: pre-sales, collections, launches, land bank, debt.',
+            fin: '"financial": {\n      "revenue": "Pre-sales Rs X Cr (booking value) + P&L revenue recognition Rs Y Cr",\n      "growth": "Pre-sales growth guidance Rs X Cr / +Y%",\n      "margins": "Embedded EBITDA margin on sold inventory; reported margins",\n      "capex": "Land/approvals investment Rs X Cr"\n    }',
+            mid: '"presales_and_collections": {\n      "presales": "Rs X Cr (Actual, +Y%) | guided Rs Z Cr",\n      "collections": "Rs X Cr; collection efficiency",\n      "pricing": "Realization Rs X/sqft trend by micro-market"\n    },\n\n    "launches_and_inventory": {\n      "launches": ["Project: micro-market, GDV Rs X Cr, timeline"],\n      "pipeline_gdv": "Launch pipeline GDV Rs X Cr over next 12 months",\n      "unsold_inventory": "Rs X Cr / X msf; ageing"\n    },\n\n    "land_bank": {\n      "additions": "New land/JDA: location, GDV potential, outlay",\n      "total": "X msf developable; strategy (owned vs JDA/redevelopment)"\n    },\n\n    "capital_allocation": {\n      "debt": "Net debt Rs X Cr; net debt/equity; cost of debt",\n      "cashflow": "Operating cashflow after land + interest"\n    }',
+            dim: '"presales_health": "Pre-sales run-rate vs guidance + collections + launch execution"'
+        },
+        generic: {
+            note: 'Generic framing: adapt any field that is a category error for this business model and mark it "Adapted:".',
+            fin: '"financial": {\n      "revenue": "SPECIFIC target with growth rate",\n      "growth": "SPECIFIC growth target",\n      "margins": "SPECIFIC operating & net margins",\n      "capex": "SPECIFIC capex amount & purpose"\n    }',
+            mid: '"deals_and_pipeline": {\n      "deal_wins": ["Deal 1: Rs X Cr, client type, when"],\n      "order_book": "Rs X Cr total; execution timeline",\n      "sales_pipeline": "Rs X Cr active pipeline"\n    },\n\n    "customers": {\n      "customer_additions": ["New customer 1"],\n      "customer_concentration": "Top 5 = X% revenue; Top 10 = Y%",\n      "net_assessment": "Net positive/negative; trend"\n    },\n\n    "segments": {\n      "revenue_by_segment": {\n        "Segment 1": "X% revenue | +Y% YoY",\n        "Segment 2": "X% revenue | +Y% YoY"\n      },\n      "segment_outlook": "Which segments accelerating vs declining"\n    },\n\n    "geography": {\n      "revenue_mix": {"Region 1": "X%", "Region 2": "Y%"},\n      "expansion_plans": "New regions targeted with timeline"\n    },\n\n    "operations": {\n      "cost_outlook": "Key cost lines easing or intensifying",\n      "working_capital": "DSO/DIO/CCC days with trend"\n    },\n\n    "capital_allocation": {\n      "capex_detailed": "Rs X Cr total | funding source",\n      "debt_management": "Gross/net debt Rs X Cr; repayment plan"\n    }',
+            dim: '"order_book_health": "Order/demand pipeline value + execution timeline + risk"'
+        }
+    };
+
     function generateGuidancePrompt(ticker) {
         var stock = symbolsData.find(s => s.ticker === ticker) || masterData.find(s => s.ticker === ticker);
         if (!stock) {
@@ -1554,6 +1628,7 @@
         var name = stock.name || ticker;
         
         var ctx = promptContext(ticker, stock);
+        var fam = GUIDANCE_FAMILY[sectorFamily(ctx.sector)];
 
         var prompt = `TICKER: ${ticker}
 COMPANY: ${name}
@@ -1565,34 +1640,18 @@ You are a senior equity analyst. Extract guidance from the LATEST earnings call.
 CRITICAL: Be SPECIFIC with actual numbers. Fill ALL fields in the schema below.
 - Tag every numeric field as (Actual Qx FYxx) or (Guided FYxx). Never present actuals as guidance.
 - "quarter" = the quarter the latest available earnings call actually covers - determine it from the call itself, do not assume the most recent calendar quarter has been reported.
-
-SECTOR ADAPTATION - if the company is a lender/NBFC/bank, reinterpret fields:
-- financial.revenue -> NII/total income + AUM (Rs Cr, % YoY)
-- financial.growth -> AUM & disbursement growth guidance
-- financial.margins -> NIM/spread, cost-to-income, credit cost (bps)
-- financial.capex -> branch additions + tech spend
-- deals_and_pipeline.order_book -> disbursements + sanctions pipeline
-- operations.raw_materials -> cost of borrowings: incremental CoB, borrowing mix, rate transmission
-- operations.working_capital -> asset quality: GNPA/NNPA %, collection efficiency, Stage-2/3
-- capital_allocation.debt_management -> leverage (D/E), CRAR %, ALM profile
-- customers -> borrower profile: ticket size, salaried/self-employed mix, LTV
-Similar remapping for pharma (ANDA pipeline, US price erosion) and real estate (pre-sales, collections) where fields would otherwise be category errors. Mark remapped fields "Lender-remapped:" etc.
+- ${fam.note}
 
 {
   "ticker": "${ticker}",
   "guidance": {
     "quarter": "Qx FYxx covered by the latest available call",
 
-    "financial": {
-      "revenue": "SPECIFIC target with growth rate",
-      "growth": "SPECIFIC growth target",
-      "margins": "SPECIFIC operating & net margins",
-      "capex": "SPECIFIC capex amount & purpose"
-    },
+    ${fam.fin},
 
     "business": {
       "expansion": "New capacity/market with timeline",
-      "products": "Product portfolio mix",
+      "products": "Product/portfolio mix",
       "geography": "Geographic revenue breakdown"
     },
 
@@ -1605,73 +1664,7 @@ Similar remapping for pharma (ANDA pipeline, US price erosion) and real estate (
 
     "summary": "One sentence, NUMBERS ONLY: top 2 actuals + top guided number",
 
-    "deals_and_pipeline": {
-      "deal_wins": ["Deal 1: Rs X Cr, client type, when", "Deal 2: Rs Y Cr, client type, when"],
-      "order_book": {
-        "total_value": "Rs X Cr total",
-        "execution_timeline": "X% in next Y months; Z% in Y-24 months",
-        "by_segment": "Segment 1 Rs X Cr | Segment 2 Rs Y Cr"
-      },
-      "sales_pipeline": "Rs X Cr active pipeline; X% conversion expected",
-      "deal_pipeline_value": "Rs X Cr in advanced negotiations"
-    },
-
-    "customers": {
-      "customer_additions": ["New customer 1", "New customer 2"],
-      "customer_losses": ["Lost customer with Rs X Cr impact"],
-      "customer_concentration": "Top 5 customers = X% revenue; Top 10 = Y%",
-      "net_assessment": "Net positive/negative; consolidation or diversification trend"
-    },
-
-    "segments": {
-      "revenue_by_segment": {
-        "Segment 1": "X% revenue | +Y% YoY growth",
-        "Segment 2": "X% revenue | +Y% YoY growth",
-        "Segment 3": "X% revenue | +Y% YoY growth"
-      },
-      "segment_outlook": "Which segments accelerating vs declining"
-    },
-
-    "geography": {
-      "revenue_mix": {"Region 1": "X%", "Region 2": "Y%", "Region 3": "Z%"},
-      "expansion_plans": "New countries/regions targeted with timeline"
-    },
-
-    "operations": {
-      "headcount": {
-        "current_strength": "X employees",
-        "hiring_plan": "Add Y engineers/staff",
-        "utilization_target": "Current X% -> Target Y%",
-        "attrition_rate": "X% YoY vs industry Y%"
-      },
-      "raw_materials": {
-        "cost_outlook": "Cost pressure easing or intensifying",
-        "expected_benefit": "X-Y bps margin benefit/pressure",
-        "key_materials": "Material 1 +X% cost | Material 2 -Y% cost"
-      },
-      "working_capital": {
-        "receivables_dso": "X days (was Y days)",
-        "inventory_dio": "X days (was Y days)",
-        "cash_conversion_cycle": "X days (was Y days)",
-        "cash_release_potential": "Rs X Cr WC release expected"
-      }
-    },
-
-    "capital_allocation": {
-      "capex_detailed": {
-        "total": "Rs X Cr",
-        "automation": "Rs X Cr",
-        "it_infrastructure": "Rs X Cr",
-        "facility_expansion": "Rs X Cr",
-        "funding_source": "X% operations, Y% debt, Z% equity"
-      },
-      "debt_management": {
-        "repayment_plan": "Rs X Cr debt repayment",
-        "net_debt_target": "Target X.X x EBITDA (from Y.Y x)",
-        "timeline": "Achieve by end of FY27/FY28",
-        "current_net_debt": "Rs X Cr"
-      }
-    },
+    ${fam.mid},
 
     "competitive_position": {
       "market_share": {
@@ -1691,7 +1684,7 @@ Similar remapping for pharma (ANDA pipeline, US price erosion) and real estate (
       "achievability": "Is guidance achievable; track record",
       "margin_quality": "What's driving margins; sustainable",
       "capex_roi": "Capex justified by returns; ROIC",
-      "order_book_health": "Order book value + execution timeline + risk",
+      ${fam.dim},
       "risk_opportunity_scorecard": "Risks vs opportunities with probability & impact",
       "management_credibility": "Transparent; conservative or aggressive setter",
       "forward_estimate_impact": "How guidance changes current/next FY EPS estimates",
