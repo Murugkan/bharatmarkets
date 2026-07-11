@@ -1508,15 +1508,6 @@
         }
     }
 
-    function latestCompletedQuarter() {
-        // Latest COMPLETED Indian fiscal quarter (Q1 Apr-Jun ... Q4 Jan-Mar)
-        var d = new Date(), m = d.getMonth() + 1, y = d.getFullYear();
-        if (m <= 3)  return 'Q3 FY' + String(y % 100);
-        if (m <= 6)  return 'Q4 FY' + String(y % 100);
-        if (m <= 9)  return 'Q1 FY' + String((y + 1) % 100);
-        return 'Q2 FY' + String((y + 1) % 100);
-    }
-
     function promptContext(ticker, stock) {
         var masterStock = masterData.find(s => s.ticker === ticker);
         var secOf = function(s) {
@@ -1550,8 +1541,7 @@
         var holdings = stock.holdings || [];
         var qty = holdings.reduce(function(s, h) { return s + (parseFloat(h.qty) || 0); }, 0);
         var holding = qty > 0 ? 'yes (in portfolio)' : 'no (watchlist / fresh money)';
-        return { sector: sector, cmpLine: cmpLine, peers: peers, holding: holding,
-                 quarter: latestCompletedQuarter() };
+        return { sector: sector, cmpLine: cmpLine, peers: peers, holding: holding };
     }
 
     function generateGuidancePrompt(ticker) {
@@ -1569,13 +1559,12 @@
 COMPANY: ${name}
 SECTOR: ${ctx.sector}
 CURRENT PRICE: ${ctx.cmpLine}
-LATEST QUARTER: ${ctx.quarter}
 
 You are a senior equity analyst. Extract guidance from the LATEST earnings call. Provide COMPLETE fundamental analysis.
 
 CRITICAL: Be SPECIFIC with actual numbers. Fill ALL fields in the schema below.
 - Tag every numeric field as (Actual Qx FYxx) or (Guided FYxx). Never present actuals as guidance.
-- If the latest available call is older than ${ctx.quarter}, extract it anyway and state that explicitly in data_quality.
+- "quarter" = the quarter the latest available earnings call actually covers - determine it from the call itself, do not assume the most recent calendar quarter has been reported.
 
 SECTOR ADAPTATION - if the company is a lender/NBFC/bank, reinterpret fields:
 - financial.revenue -> NII/total income + AUM (Rs Cr, % YoY)
@@ -1592,7 +1581,7 @@ Similar remapping for pharma (ANDA pipeline, US price erosion) and real estate (
 {
   "ticker": "${ticker}",
   "guidance": {
-    "quarter": "${ctx.quarter}",
+    "quarter": "Qx FYxx covered by the latest available call",
 
     "financial": {
       "revenue": "SPECIFIC target with growth rate",
