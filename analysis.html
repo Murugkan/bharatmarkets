@@ -98,7 +98,7 @@
         .badge-M{background:#f57c00}
         .badge-L{background:#546e7a}
         .badge-tag{background:#1e3350;color:#64b5f6;font-size:8px;padding:2px 5px;border-radius:3px}
-        /* ── Research-note presentation (fundamentals + insights tabs) ── */
+        /* ── Research-note presentation (concall + insights tabs) ── */
         .fx-sec{display:flex;align-items:baseline;gap:10px;margin:20px 2px 10px}
         .fx-num{font-size:9px;font-weight:800;letter-spacing:1px}
         .fx-ttl{font-size:10.5px;font-weight:800;color:var(--tx1);letter-spacing:2px;text-transform:uppercase}
@@ -151,7 +151,7 @@
         <button class="tab" onclick="switchTab('canvas')">🎨 Canvas</button>
         <button class="tab" onclick="switchTab('news')">📰 News</button>
         <button class="tab" onclick="switchTab('charts')">📈 Charts</button>
-        <button class="tab" onclick="switchTab('fundamentals')">📋 Fundamentals</button>
+        <button class="tab" onclick="switchTab('fundamentals')">📞 Concall</button>
         <button class="tab" onclick="switchTab('guidance')">💡 Guidance</button>
     </div>
     
@@ -1093,7 +1093,7 @@ function renderTab(tab) {
         }
         
         if (!guidance || !guidance.guidance) {
-            html = '<div class="placeholder"><div class="placeholder-emoji">📋</div><div>Fundamentals</div><div style="font-size:9px;color:#9d8cff;margin-top:8px">No guidance data available</div></div>';
+            html = '<div class="placeholder"><div class="placeholder-emoji">📞</div><div>Concall</div><div style="font-size:9px;color:#9d8cff;margin-top:8px">No guidance data available</div></div>';
         } else {
             const g = guidance.guidance;
             const m = g.management || {};
@@ -1114,7 +1114,7 @@ function renderTab(tab) {
             const tint = (c) => c === 'var(--gr)' ? 'rgba(0,232,150,.1)' : c === 'var(--rd)' ? 'rgba(255,107,133,.1)' : c === 'var(--yw)' ? 'rgba(255,191,71,.1)' : 'rgba(122,143,160,.1)';
 
             const undisc = v => { if(!v) return true; const s = String(v).trim(); return /^(not disclosed|not applicable|not quantified|none disclosed|n\/?a)\b/i.test(s) && s.length <= 45; };
-            const pretty = k => k.replace(/_/g,' ').replace(/\b[a-z]/g,c=>c.toUpperCase()).replace(/\bRoi\b/g,'ROI').replace(/\bDso\b/g,'DSO').replace(/\bDio\b/g,'DIO').replace(/\bIt\b/g,'IT');
+            const pretty = k => k.replace(/_/g,' ').replace(/\b[a-z]/g,c=>c.toUpperCase()).replace(/\bRoi\b/g,'ROI').replace(/\bDso\b/g,'DSO').replace(/\bDio\b/g,'DIO').replace(/\bIt\b/g,'IT').replace(/\bAnd\b/g,'&');
 
             // Numbered section header — counts only sections that actually render
             let secN = 0;
@@ -1271,12 +1271,13 @@ function renderTab(tab) {
                 <!-- SECTOR-AWARE FAMILY SECTIONS (segments, pipelines, asset quality, volumes, ... in schema order) -->
                 ${renderFamilySections()}
 
-                <!-- COMPETITIVE POSITION -->
+                <!-- COMPETITIVE POSITION (known fields + tolerant of schema drift, e.g. overall_trend at section level) -->
                 ${secCard('Competitive Position', 'var(--gr)', joinRows(
                     kvGroup(cp.market_share),
                     stackRow('Pricing Strategy', cp.pricing_strategy, 'var(--ac)'),
                     listRows('Advantages', cp.competitive_advantages, 'var(--gr)', '▸'),
-                    listRows('Threats', cp.competitive_threats, 'var(--rd)', '▸')
+                    (cp.competitive_threats || []).filter(x => !undisc(x)).length ? `<div class="fx-stack"><div class="fx-lab" style="color:var(--rd)">Threats</div>${cp.competitive_threats.filter(x => !undisc(x)).map(riskRow).join('')}</div>` : '',
+                    ...Object.entries(cp).filter(([k]) => !['market_share','pricing_strategy','competitive_advantages','competitive_threats'].includes(k)).map(([k, v]) => renderField(k, v, 'var(--gr)'))
                 ))}
 
                 <!-- ANALYST VIEW -->
@@ -1451,6 +1452,17 @@ function renderTab(tab) {
                 ${sbRows.length ? `
                 ${secHead(`Sector Briefing${sb.sector_name ? ' · ' + sb.sector_name : ''}`, 'var(--ac)')}
                 <div class="fx-card"><div class="fx-card-b">${sbRows.join('')}</div></div>` : ''}
+
+                <!-- DATA QUALITY (v3 schema) -->
+                ${i.data_quality ? `
+                <div class="fx-card" style="opacity:0.75;margin-top:10px">
+                    <div class="fx-card-h"><span class="fx-lab" style="color:var(--tx3)">Data Quality</span></div>
+                    <div class="fx-card-b">
+                        ${sbRow('Price Basis', i.data_quality.price_basis, 'var(--tx3)')}
+                        ${Array.isArray(i.data_quality.key_sources) && i.data_quality.key_sources.length ? `<div class="fx-stack"><div class="fx-lab" style="color:var(--tx3)">Sources</div>${i.data_quality.key_sources.map(x => `<div class="fx-li"><span class="fx-li-m" style="color:var(--tx3)">\u00b7</span><span class="fx-prose" style="flex:1">${hlSent(x)}</span></div>`).join('')}</div>` : ''}
+                        ${Array.isArray(i.data_quality.gaps) && i.data_quality.gaps.length ? `<div class="fx-stack"><div class="fx-lab" style="color:var(--yw)">Gaps</div>${i.data_quality.gaps.map(x => `<div class="fx-li"><span class="fx-li-m" style="color:var(--yw)">\u25b8</span><span class="fx-prose" style="flex:1">${hlSent(x)}</span></div>`).join('')}</div>` : ''}
+                    </div>
+                </div>` : ''}
 
                 </div>
             `;
