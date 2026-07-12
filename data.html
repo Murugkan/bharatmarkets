@@ -848,13 +848,13 @@
                     })
                     .catch(() => { /* leave DB-only render in place */ });
 
-                // Async: fetch guidance.json live and count stale tickers.
+                // Guidance counts come from the DB (loaded records), not from a
+                // separate guidance.json fetch - the DB is what the app actually
+                // has, and the extra large-file fetch was redundant.
                 // v3 staleness: an entry is stale only if its call date predates
                 // the most recent quarter-end whose SEBI reporting deadline has
                 // passed (45 days; 60 for the Mar quarter) - i.e. a NEWER
-                // earnings call should exist. The old rolling 1-month window
-                // wrongly flagged the entire results-season cohort (a May Q4
-                // extract is not stale in July when Q1 isn't reportable yet).
+                // earnings call should exist.
                 function guidanceStaleBoundary(now) {
                     var best = null;
                     for (var y = now.getFullYear() - 1; y <= now.getFullYear(); y++) {
@@ -867,30 +867,23 @@
                     }
                     return best;
                 }
-                ghFetch('data/guidance.json')
-                    .then(r => r.json())
-                    .then(json => {
-                        var boundary = guidanceStaleBoundary(new Date());
-                        var stale = 0;
-                        Object.keys(json).forEach(function(ticker) {
-                            if (ticker === '_metadata') return;
-                            var entry = json[ticker];
-                            var dateStr = entry && entry.guidance && entry.guidance.date;
-                            if (!dateStr) return;
-                            var d = new Date(dateStr);
-                            if (!isNaN(d) && boundary && d < boundary) stale++;
-                        });
-                        // Total comes from guidance.json _metadata (maintained by
-                        // syncGuidanceMetadata on every publish/delete) - single
-                        // source of truth, not re-derived by iterating keys here.
-                        var meta = json._metadata || {};
-                        liveMetadata.guidance_live_total =
-                            (typeof meta.tickers_with_guidance === 'number') ? meta.tickers_with_guidance :
-                            (typeof meta.total_tickers === 'number') ? meta.total_tickers : null;
-                        liveMetadata.guidance_live_stale_count = stale;
-                        renderDataSourcesTable(html, liveMetadata);
-                    })
-                    .catch(() => { /* leave DB-only render in place */ });
+                if (masterData && masterData.length) {
+                    var gBoundary = guidanceStaleBoundary(new Date());
+                    var gTotal = 0, gStale = 0;
+                    masterData.forEach(function(s) {
+                        var gd = s.derived_metrics && s.derived_metrics.ai_insights_guidance
+                              && s.derived_metrics.ai_insights_guidance.guidance;
+                        var dateStr = gd && gd.date;
+                        if (!gd) return;
+                        gTotal++;
+                        if (!dateStr) return;
+                        var d = new Date(dateStr);
+                        if (!isNaN(d) && gBoundary && d < gBoundary) gStale++;
+                    });
+                    liveMetadata.guidance_live_total = gTotal;
+                    liveMetadata.guidance_live_stale_count = gStale;
+                    renderDataSourcesTable(html, liveMetadata);
+                }
             };
             
             getMetadataReq.onerror = function() {
