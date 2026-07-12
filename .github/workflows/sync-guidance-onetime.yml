@@ -1,0 +1,67 @@
+name: One-time - Sync guidance.json with unified-symbols.json
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync-guidance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Sync guidance with unified-symbols (master) + fix metadata
+        run: |
+          python3 << 'EOF'
+          import json, os, sys
+          from datetime import datetime, timezone
+
+          # unified-symbols.json is the MASTER - locate it
+          sym_path = next((p for p in ('data/unified-symbols.json', 'unified-symbols.json')
+                           if os.path.exists(p)), None)
+          if not sym_path:
+              sys.exit('unified-symbols.json not found')
+          gd_path = 'data/guidance.json'
+
+          symbols = json.load(open(sym_path))
+          master = {s['ticker'] for s in symbols.get('symbols', symbols)}
+          gd = json.load(open(gd_path))
+
+          # Delete guidance entries whose ticker is not in the master
+          orphans = [t for t in gd if t != '_metadata' and t not in master]
+          for t in orphans:
+              del gd[t]
+
+          # Recount metadata (preserve version/created/description)
+          keys = [k for k in gd if k != '_metadata']
+          md = gd.setdefault('_metadata', {})
+          before = (md.get('total_tickers'), md.get('tickers_with_guidance'),
+                    md.get('tickers_with_insights'))
+          md['total_tickers'] = len(keys)
+          md['tickers_with_guidance'] = sum(1 for k in keys if gd[k].get('guidance'))
+          md['tickers_with_insights'] = sum(1 for k in keys if gd[k].get('insights'))
+          after = (md['total_tickers'], md['tickers_with_guidance'],
+                   md['tickers_with_insights'])
+
+          if not orphans and before == after:
+              print('Already in sync - nothing to do')
+              sys.exit(0)
+
+          md['updated_at'] = datetime.now(timezone.utc).isoformat()
+          json.dump(gd, open(gd_path, 'w'), indent=2, ensure_ascii=False)
+          print(f'Removed orphans: {orphans or "none"}')
+          print(f'Counts {before} -> {after}')
+          open(os.environ['GITHUB_ENV'], 'a').write(
+              f'ORPHANS={",".join(orphans) or "none"}\n')
+          EOF
+
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/guidance.json
+          git diff --cached --quiet && echo "No changes" && exit 0
+          git commit -m "Sync guidance.json with unified-symbols (orphans: ${ORPHANS}) [skip ci]"
+          git push
