@@ -871,17 +871,22 @@
                     .then(r => r.json())
                     .then(json => {
                         var boundary = guidanceStaleBoundary(new Date());
-                        var total = 0, stale = 0;
+                        var stale = 0;
                         Object.keys(json).forEach(function(ticker) {
                             if (ticker === '_metadata') return;
                             var entry = json[ticker];
                             var dateStr = entry && entry.guidance && entry.guidance.date;
                             if (!dateStr) return;
-                            total++;
                             var d = new Date(dateStr);
                             if (!isNaN(d) && boundary && d < boundary) stale++;
                         });
-                        liveMetadata.guidance_live_total = total;
+                        // Total comes from guidance.json _metadata (maintained by
+                        // syncGuidanceMetadata on every publish/delete) - single
+                        // source of truth, not re-derived by iterating keys here.
+                        var meta = json._metadata || {};
+                        liveMetadata.guidance_live_total =
+                            (typeof meta.tickers_with_guidance === 'number') ? meta.tickers_with_guidance :
+                            (typeof meta.total_tickers === 'number') ? meta.total_tickers : null;
                         liveMetadata.guidance_live_stale_count = stale;
                         renderDataSourcesTable(html, liveMetadata);
                     })
@@ -2698,15 +2703,8 @@ function saveGuidanceToGitHub(ticker, jsonText, pat, date) {
                 content[ticker].insights = pendingInsightsChanges[ticker];
             });
 
-            // Update _metadata with current ticker counts
-            const tickerKeys = Object.keys(content).filter(k => k !== '_metadata');
-            const guidanceCount = tickerKeys.filter(k => content[k] && content[k].guidance).length;
-            const insightsCount = tickerKeys.filter(k => content[k] && content[k].insights).length;
-            if (!content._metadata) content._metadata = {};
-            content._metadata.total_tickers = tickerKeys.length;
-            content._metadata.tickers_with_guidance = guidanceCount;
-            content._metadata.tickers_with_insights = insightsCount;
-            content._metadata.updated_at = new Date().toISOString();
+            // Update _metadata with current ticker counts (shared helper)
+            syncGuidanceMetadata(content);
 
             let jsonString = JSON.stringify(content, null, 2);
             jsonString = sanitizeJSON(jsonString); // Fix any corrupted rupee symbols
@@ -2809,6 +2807,18 @@ function saveGuidanceToGitHub(ticker, jsonText, pat, date) {
         });
     }
 
+    // Single source of truth for guidance.json _metadata counters -
+    // used by both the publish flow and the delete flow so they can't drift.
+    function syncGuidanceMetadata(content) {
+        var tickerKeys = Object.keys(content).filter(function(k) { return k !== '_metadata'; });
+        if (!content._metadata) content._metadata = {};
+        content._metadata.total_tickers = tickerKeys.length;
+        content._metadata.tickers_with_guidance = tickerKeys.filter(function(k) { return content[k] && content[k].guidance; }).length;
+        content._metadata.tickers_with_insights = tickerKeys.filter(function(k) { return content[k] && content[k].insights; }).length;
+        content._metadata.updated_at = new Date().toISOString();
+        return content;
+    }
+
     function deleteStockFromList(ticker) {
         // Dismiss the on-screen keyboard first (e.g. from the ticker search box),
         // otherwise the confirm() dialog's OK button can end up hidden behind it on iOS.
@@ -2849,9 +2859,7 @@ function saveGuidanceToGitHub(ticker, jsonText, pat, date) {
                             return;
                         }
                         delete data[ticker];
-                        if (data._metadata && typeof data._metadata.count === 'number') {
-                            data._metadata.count = Object.keys(data).filter(function(k) { return k !== '_metadata'; }).length;
-                        }
+                        syncGuidanceMetadata(data);
                         uploadToGitHub(pat, GITHUB_CONFIG.PATHS.guidance, data, 'Delete ' + ticker + ' guidance');
                         log('✅ Deleted ' + ticker + ' from guidance.json');
                     })
