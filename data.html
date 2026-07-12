@@ -2835,15 +2835,37 @@ function saveGuidanceToGitHub(ticker, jsonText, pat, date) {
             // 2. Remove from unified-symbols.json on GitHub (use symbolsData already filtered)
             uploadUnifiedSymbols(pat);
 
-            // 3. Remove from guidance.json on GitHub
-            ghFetch(GITHUB_CONFIG.PATHS.guidance)
-                .then(function(r) { return r.json(); })
-                .then(function(data) {
-                    delete data[ticker];
-                    uploadToGitHub(pat, GITHUB_CONFIG.PATHS.guidance, data, 'Delete ' + ticker + ' guidance');
-                    log('✅ Deleted ' + ticker + ' from guidance.json');
-                })
-                .catch(function(e) { log('⚠️ Guidance delete failed: ' + e.message); });
+            // 3. Remove from guidance.json on GitHub.
+            // Failure here previously left a silent orphan (deleted from
+            // unified-symbols but still in guidance.json) - the source of
+            // "Guidance total > Tickers" drift. Now: skip no-op commits,
+            // keep _metadata.count in sync, and fail LOUDLY with a retry.
+            function deleteFromGuidanceJson(attempt) {
+                ghFetch(GITHUB_CONFIG.PATHS.guidance)
+                    .then(function(r) { return r.json(); })
+                    .then(function(data) {
+                        if (!(ticker in data)) {
+                            log('ℹ️ ' + ticker + ' had no guidance.json entry - nothing to delete');
+                            return;
+                        }
+                        delete data[ticker];
+                        if (data._metadata && typeof data._metadata.count === 'number') {
+                            data._metadata.count = Object.keys(data).filter(function(k) { return k !== '_metadata'; }).length;
+                        }
+                        uploadToGitHub(pat, GITHUB_CONFIG.PATHS.guidance, data, 'Delete ' + ticker + ' guidance');
+                        log('✅ Deleted ' + ticker + ' from guidance.json');
+                    })
+                    .catch(function(e) {
+                        if (attempt < 2) {
+                            log('⚠️ Guidance delete failed (retrying): ' + e.message);
+                            setTimeout(function() { deleteFromGuidanceJson(attempt + 1); }, 1500);
+                        } else {
+                            log('❌ Guidance delete FAILED for ' + ticker + ' - ORPHAN left in guidance.json: ' + e.message);
+                            showToast('❌ ' + ticker + ' removed from symbols but NOT from guidance.json - re-run delete');
+                        }
+                    });
+            }
+            deleteFromGuidanceJson(0);
         }, 150);
     }
     
