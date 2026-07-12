@@ -848,13 +848,29 @@
                     })
                     .catch(() => { /* leave DB-only render in place */ });
 
-                // Async: fetch guidance.json live and count tickers whose
-                // guidance.date is older than 1 month (Refresh row count).
+                // Async: fetch guidance.json live and count stale tickers.
+                // v3 staleness: an entry is stale only if its call date predates
+                // the most recent quarter-end whose SEBI reporting deadline has
+                // passed (45 days; 60 for the Mar quarter) - i.e. a NEWER
+                // earnings call should exist. The old rolling 1-month window
+                // wrongly flagged the entire results-season cohort (a May Q4
+                // extract is not stale in July when Q1 isn't reportable yet).
+                function guidanceStaleBoundary(now) {
+                    var best = null;
+                    for (var y = now.getFullYear() - 1; y <= now.getFullYear(); y++) {
+                        var qs = [[y, 2, 31, 60], [y, 5, 30, 45], [y, 8, 30, 45], [y, 11, 31, 45]];
+                        for (var k = 0; k < qs.length; k++) {
+                            var qend = new Date(qs[k][0], qs[k][1], qs[k][2], 23, 59, 59);
+                            var deadline = new Date(qend.getTime() + qs[k][3] * 24 * 3600 * 1000);
+                            if (now > deadline && (!best || qend > best)) best = qend;
+                        }
+                    }
+                    return best;
+                }
                 ghFetch('data/guidance.json')
                     .then(r => r.json())
                     .then(json => {
-                        var oneMonthAgo = new Date();
-                        oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
+                        var boundary = guidanceStaleBoundary(new Date());
                         var total = 0, stale = 0;
                         Object.keys(json).forEach(function(ticker) {
                             if (ticker === '_metadata') return;
@@ -863,7 +879,7 @@
                             if (!dateStr) return;
                             total++;
                             var d = new Date(dateStr);
-                            if (!isNaN(d) && d < oneMonthAgo) stale++;
+                            if (!isNaN(d) && boundary && d < boundary) stale++;
                         });
                         liveMetadata.guidance_live_total = total;
                         liveMetadata.guidance_live_stale_count = stale;
@@ -1106,12 +1122,12 @@
             }
         }
 
-        // Guidance staleness: tickers whose guidance.date is older than 1 month,
-        // computed from guidance.json fetched live (see renderDataSources()).
+        // Guidance staleness: entries whose call date predates the latest
+        // quarter-end past its reporting deadline (see guidanceStaleBoundary).
         var guidanceTotal = metadata.guidance_live_total ?? '—';
         var guidanceStaleCount = metadata.guidance_live_stale_count;
         var guidanceStaleHtml = (guidanceStaleCount != null)
-            ? `<span style="color:#ff4d6d;"> ${guidanceStaleCount}</span>`
+            ? `<span style="color:#ff4d6d;" title="call date older than the last reportable quarter-end — a newer earnings call should exist"> ${guidanceStaleCount} stale</span>`
             : ' —';
 
         // Generic "Full Refresh All" row (= existing REFRESH button / reloadAuto())
